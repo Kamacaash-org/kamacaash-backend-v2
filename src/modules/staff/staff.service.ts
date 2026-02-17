@@ -56,7 +56,7 @@ export class StaffService {
     }
 
     private generateTokens(staff: StaffUser): StaffSessionResponseDto {
-        const payload = { sub: staff.id, email: staff.email, role: staff.role };
+        const payload = { sub: staff.id, username: staff.username, role: staff.role };
         return {
             access_token: this.jwtService.sign(payload),
             refresh_token: this.jwtService.sign(payload, { expiresIn: '7d' }),
@@ -70,10 +70,13 @@ export class StaffService {
         });
 
         if (existing) {
-            throw new ConflictException(DEFAULT_MESSAGES.STAFF.ALREADY_EXISTS);
+            if (existing.phone_e164 === createStaffDto.phone_e164) {
+                throw new ConflictException(DEFAULT_MESSAGES.STAFF.PHONE_ALREADY_EXISTS);
+            }
+            throw new ConflictException(DEFAULT_MESSAGES.STAFF.EMAIL_ALREADY_EXISTS);
         }
 
-        const password = createStaffDto.password || Math.random().toString(36).slice(-8);
+        const password = createStaffDto.password;
         const password_hash = await bcrypt.hash(password, 10);
 
         const staff = this.staffRepository.create({

@@ -33,14 +33,13 @@ export class BusinessesService {
             .replace(/(^-|-$)+/g, '');
     }
 
-    async create(createBusinessDto: CreateBusinessDto, ownerId: string): Promise<ApiResponseDto<BusinessResponseDto>> {
+    async create(createBusinessDto: CreateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
         const { latitude, longitude, country_code, ...rest } = createBusinessDto;
         const country = await this.getCountryOrThrow(country_code);
 
         const business = this.businessesRepository.create({
             ...rest,
             country_code: country.iso_code_3166,
-            owner_id: ownerId,
             currency_code: country.currency_code,
             timezone: country.default_timezone,
             default_language: country.default_language,

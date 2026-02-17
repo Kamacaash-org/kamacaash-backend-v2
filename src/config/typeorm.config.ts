@@ -12,7 +12,10 @@ export default new DataSource({
     port: parseInt(process.env.DB_PORT || '5432', 10),
     username: process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD || '123',
-    database: process.env.DB_NAME || 'kamacaash_prod',
+    database: process.env.DB_NAME || 'kamacaash_dev',
+    ssl: {
+        rejectUnauthorized: false
+    },
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/migrations/*.ts'],
     synchronize: false, // Always false for CLI/production, migrations only

@@ -4,7 +4,6 @@ import {
     Index,
     ManyToOne,
     JoinColumn,
-    OneToMany,
 } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Business } from '../../businesses/entities/business.entity';
