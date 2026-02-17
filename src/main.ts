@@ -6,6 +6,12 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // ✅ ENABLE CORS
+  app.enableCors({
+    origin: ['http://localhost:3000', 'http://localhost:3001'], // your frontend
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
   const config = new DocumentBuilder()
     .setTitle('Kamacaash API')
     .setDescription('The Kamacaash API description')

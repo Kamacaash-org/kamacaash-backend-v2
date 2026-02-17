@@ -1,7 +1,7 @@
 import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
-import { UserRole } from '../../../common/entities/enums/all.enums';
+import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
 
 @Entity('staff_users')
 @Index('idx_staff_users_email', ['email'])
@@ -41,6 +41,11 @@ export class StaffUser extends BaseSoftDeleteEntity {
 
     @Column({ type: 'enum', enum: UserRole })
     role: UserRole;
+
+    @Column({
+        type: 'enum', enum: sexOptions, nullable: true,
+    })
+    sex: sexOptions;
 
     @Column({ type: 'text', array: true, default: [] })
     permissions: string[];

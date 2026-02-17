@@ -46,6 +46,11 @@ export enum PayoutMethod {
     CASH = 'CASH',
 }
 
+export enum sexOptions {
+    MALE = 'MALE',
+    FEMALE = 'FEMALE',
+}
+
 export enum OfferStatus {
     DRAFT = 'DRAFT',
     PUBLISHED = 'PUBLISHED',

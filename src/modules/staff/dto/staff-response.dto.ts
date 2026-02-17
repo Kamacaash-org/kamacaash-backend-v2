@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../../../common/entities/enums/all.enums';
+import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
 import { StaffUser } from '../entities/staff-user.entity';
 
 export class StaffResponseDto {
@@ -32,6 +32,9 @@ export class StaffResponseDto {
 
     @ApiProperty({ enum: UserRole })
     role: UserRole;
+
+    @ApiProperty({ enum: sexOptions })
+    sex: sexOptions;
 
     @ApiProperty({ type: [String] })
     permissions: string[];
@@ -109,6 +112,7 @@ export class StaffResponseDto {
             password_changed_at: staff.password_changed_at,
             two_factor_enabled: staff.two_factor_enabled,
             notes: staff.notes,
+            sex: staff.sex || null,
             metadata: staff.metadata,
             created_at: staff.created_at,
             updated_at: staff.updated_at,

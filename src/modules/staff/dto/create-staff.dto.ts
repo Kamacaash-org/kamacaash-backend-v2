@@ -9,7 +9,7 @@ import {
     Length,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '../../../common/entities/enums/all.enums';
+import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
 
 export class CreateStaffDto {
     @ApiProperty({ example: 'admin@kamacaash.com' })
@@ -54,6 +54,10 @@ export class CreateStaffDto {
     @ApiProperty({ enum: UserRole })
     @IsEnum(UserRole)
     role: UserRole;
+
+    @ApiProperty({ enum: sexOptions })
+    @IsEnum(sexOptions)
+    sex: sexOptions;
 
     @ApiPropertyOptional({ example: 'Temp@1234' })
     @IsOptional()
