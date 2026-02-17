@@ -29,8 +29,8 @@ export class BusinessesController {
     @ApiBearerAuth()
     @Post()
     @ApiOperation({ summary: 'Create business (Owner)' })
-    create(@Body() createBusinessDto: CreateBusinessDto, @Request() req): Promise<ApiResponseDto<BusinessResponseDto>> {
-        return this.businessesService.create(createBusinessDto, req.user.id);
+    create(@Body() createBusinessDto: CreateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.create(createBusinessDto);
     }
 
     @Get()

@@ -59,7 +59,7 @@ export class CreateStaffDto {
     @IsOptional()
     @IsString()
     @Length(8, 100)
-    password?: string;
+    password: string;
 
     @ApiPropertyOptional({ type: [String], example: ['staff:read', 'staff:update'] })
     @IsOptional()

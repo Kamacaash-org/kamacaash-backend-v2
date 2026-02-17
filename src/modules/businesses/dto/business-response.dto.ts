@@ -27,8 +27,6 @@ export class BusinessResponseDto {
   @ApiProperty({ type: [String] })
   tags: string[];
 
-  @ApiPropertyOptional()
-  owner_id?: string;
 
   @ApiPropertyOptional()
   primary_staff_id?: string;
@@ -167,7 +165,6 @@ export class BusinessResponseDto {
       category_id: business.category_id,
       subcategories: business.subcategories,
       tags: business.tags,
-      owner_id: business.owner_id,
       primary_staff_id: business.primary_staff_id,
       country_code: business.country_code,
       city: business.city,

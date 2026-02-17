@@ -16,13 +16,6 @@ export class BusinessStaff extends BaseEntity {
     business: Business;
 
     @Column({ type: 'uuid', nullable: true })
-    user_id: string;
-
-    @ManyToOne(() => AppUser, { onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'user_id' })
-    user: AppUser;
-
-    @Column({ type: 'uuid', nullable: true })
     staff_user_id: string;
 
     @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })

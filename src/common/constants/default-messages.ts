@@ -30,7 +30,9 @@ export const DEFAULT_MESSAGES = {
     INVALID_CREDENTIALS: 'Invalid credentials',
     ACCOUNT_DISABLED: 'Account disabled',
     INVALID_2FA: 'Invalid 2FA Code',
-    ALREADY_EXISTS: 'Staff with this email or phone already exists',
+    EMAIL_ALREADY_EXISTS: 'Staff with this email or phone already exists',
+    PHONE_ALREADY_EXISTS: 'Staff with this email or phone already exists',
+
   },
   BUSINESS: {
     LIST_FETCHED: 'Businesses fetched successfully',

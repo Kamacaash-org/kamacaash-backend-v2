@@ -19,7 +19,6 @@ import {
 @Entity('businesses')
 @Index('idx_businesses_category', ['category_id'])
 @Index('idx_businesses_country', ['country_code'])
-@Index('idx_businesses_owner', ['owner_id'])
 @Index('idx_businesses_status', ['verification_status', 'status'])
 @Index('idx_businesses_location', ['location'], { spatial: true })
 @Index('idx_businesses_rating', ['average_rating'])
@@ -50,12 +49,6 @@ export class Business extends BaseSoftDeleteEntity {
     @Column({ type: 'text', array: true, default: [] })
     tags: string[];
 
-    @Column({ type: 'uuid', nullable: true })
-    owner_id: string;
-
-    @ManyToOne(() => AppUser, { onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'owner_id' })
-    owner: AppUser;
 
     @Column({ type: 'uuid', nullable: true })
     primary_staff_id: string;

@@ -1,14 +1,11 @@
 import {
     Controller,
     Get,
-    Post,
     Body,
-    Put,
     Param,
     Delete,
     Query,
     Patch,
-    UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PaginationDto } from '../../common/dto/pagination.dto';
