@@ -2,7 +2,7 @@ import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
 import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
-import { Business } from 'src/modules/businesses/entities/business.entity';
+import { Business } from '../../businesses/entities/business.entity';
 
 @Entity('staff_users')
 export class StaffUser extends BaseSoftDeleteEntity {
