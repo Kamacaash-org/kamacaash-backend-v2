@@ -3,8 +3,6 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { AppUser } from '../../users/entities/app-user.entity';
 
 @Entity('user_devices')
-@Index('idx_devices_user', ['user_id'])
-@Index('idx_devices_push', ['push_token'])
 export class UserDevice extends BaseEntity {
     @Column({ type: 'uuid' })
     user_id: string;

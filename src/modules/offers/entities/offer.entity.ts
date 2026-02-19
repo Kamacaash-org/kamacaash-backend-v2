@@ -12,13 +12,6 @@ import { StaffUser } from '../../staff/entities/staff-user.entity';
 import { OfferStatus } from '../../../common/entities/enums/all.enums';
 
 @Entity('offers')
-@Index('idx_offers_business', ['business_id'])
-@Index('idx_offers_category', ['category_id'])
-@Index('idx_offers_status', ['status', 'is_active'])
-@Index('idx_offers_pickup', ['pickup_start', 'pickup_end'])
-@Index('idx_offers_available', ['business_id', 'quantity_remaining'])
-@Index(['tags'], { where: 'tags IS NOT NULL' }) // GIN not directly supported in all TypeORM versions via decorator options cleanly without synchronize: false sometimes. Let's try simple index or remove 'using: gin' to pass build first.
-@Index(['dietary_info']) // Simplification for build
 export class Offer extends BaseSoftDeleteEntity {
     @Column({ type: 'uuid' })
     business_id: string;

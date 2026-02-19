@@ -2,8 +2,6 @@ import { Entity, PrimaryGeneratedColumn, Column, Index, ManyToOne, JoinColumn, B
 import { Offer } from './offer.entity';
 
 @Entity('offer_pickup_windows')
-@Index('idx_pickup_windows_offer', ['offer_id'])
-@Index('idx_pickup_windows_time', ['starts_at', 'ends_at'])
 export class OfferPickupWindow extends BaseEntity {
     @PrimaryGeneratedColumn('uuid')
     id: string;

@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { StaffResponseDto } from './staff-response.dto';
+import { StaffAuthUserDto } from './staff-auth-user.dto';
 
 export class StaffSessionResponseDto {
     @ApiProperty()
@@ -8,8 +9,8 @@ export class StaffSessionResponseDto {
     @ApiProperty()
     refresh_token: string;
 
-    @ApiProperty({ type: StaffResponseDto })
-    user: StaffResponseDto;
+    @ApiProperty({ type: StaffAuthUserDto })
+    user: StaffAuthUserDto;
 }
 
 export class StaffLogin2faRequiredResponseDto {

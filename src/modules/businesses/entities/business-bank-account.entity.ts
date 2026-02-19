@@ -3,7 +3,6 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { Business } from './business.entity';
 
 @Entity('business_bank_accounts')
-@Unique('uq_business_bank_active', ['business_id', 'account_number']) // Note: partial index in SQL, enforcing via app or simple unique here
 export class BusinessBankAccount extends BaseEntity {
     @Column({ type: 'uuid' })
     business_id: string;

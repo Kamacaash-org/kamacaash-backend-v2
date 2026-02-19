@@ -6,10 +6,11 @@ import { StaffService } from './staff.service';
 import { StaffController } from './staff.controller';
 import { StaffUser } from './entities/staff-user.entity';
 import { AuthModule } from '../auth/auth.module';
+import { Country } from '../countries/entities/country.entity';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([StaffUser]),
+        TypeOrmModule.forFeature([StaffUser, Country]),
         JwtModule.registerAsync({
             imports: [ConfigModule],
             inject: [ConfigService],

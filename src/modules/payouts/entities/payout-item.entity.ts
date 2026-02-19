@@ -4,9 +4,6 @@ import { Payout } from './payout.entity';
 import { Order } from '../../orders/entities/order.entity';
 
 @Entity('payout_items')
-@Index('idx_payout_items_payout', ['payout_id'])
-@Index('idx_payout_items_order', ['order_id'])
-@Unique('uq_payout_items', ['payout_id', 'order_id'])
 export class PayoutItem { // Not extending BaseEntity because schema only has created_at, no update/metadata if strict. But schema has id.
     @Column({ primary: true, type: 'uuid', generated: 'uuid' })
     id: string;

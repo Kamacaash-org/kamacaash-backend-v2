@@ -2,11 +2,9 @@ import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
 import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
+import { Business } from 'src/modules/businesses/entities/business.entity';
 
 @Entity('staff_users')
-@Index('idx_staff_users_email', ['email'])
-@Index('idx_staff_users_role', ['role'])
-@Index('idx_staff_users_active', ['is_active'])
 export class StaffUser extends BaseSoftDeleteEntity {
     @Column({ length: 255, unique: true })
     email: string;
@@ -20,6 +18,22 @@ export class StaffUser extends BaseSoftDeleteEntity {
     @ManyToOne(() => Country)
     @JoinColumn({ name: 'country_code', referencedColumnName: 'iso_code_3166' })
     country: Country;
+
+    @Column({ type: 'char', length: 10, nullable: true })
+    phone_code: string;
+
+    @ManyToOne(() => Country)
+    @JoinColumn({ name: 'phone_code', referencedColumnName: 'phone_code' })
+    phone_country: Country;
+
+
+    @Column({ type: 'uuid', nullable: true })
+    business_id: string;
+
+    @ManyToOne(() => Business, { nullable: true })
+    @JoinColumn({ name: 'business_id' })
+    business?: Business;
+
 
     @Column({ length: 50, unique: true })
     phone_e164: string;
@@ -57,7 +71,23 @@ export class StaffUser extends BaseSoftDeleteEntity {
     is_admin_approved: boolean;
 
     @Column({ type: 'uuid', nullable: true })
+    created_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'created_by' })
+    creator: StaffUser;
+
+
+    @Column({ type: 'uuid', nullable: true })
+    updated_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'updated_by' })
+    updater: StaffUser;
+
+    @Column({ type: 'uuid', nullable: true })
     approved_by: string;
+
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'approved_by' })

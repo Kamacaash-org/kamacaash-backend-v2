@@ -17,12 +17,6 @@ import {
 } from '../../../common/entities/enums/all.enums';
 
 @Entity('businesses')
-@Index('idx_businesses_category', ['category_id'])
-@Index('idx_businesses_country', ['country_code'])
-@Index('idx_businesses_status', ['verification_status', 'status'])
-@Index('idx_businesses_location', ['location'], { spatial: true })
-@Index('idx_businesses_rating', ['average_rating'])
-@Index('idx_businesses_featured', ['is_featured', 'featured_until'])
 export class Business extends BaseSoftDeleteEntity {
     @Column({ length: 255 })
     owner_name: string;

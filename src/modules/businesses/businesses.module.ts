@@ -8,6 +8,7 @@ import { BusinessStaff } from './entities/business-staff.entity';
 import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { BusinessContract } from './entities/business-contract.entity';
 import { Country } from '../countries/entities/country.entity';
+import { StaffUser } from '../staff/entities/staff-user.entity';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { Country } from '../countries/entities/country.entity';
             BusinessBankAccount,
             BusinessContract,
             Country,
+            StaffUser,
         ]),
     ],
     controllers: [BusinessesController],

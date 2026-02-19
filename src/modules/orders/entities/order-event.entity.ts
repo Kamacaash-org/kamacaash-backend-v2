@@ -3,7 +3,6 @@ import { Order } from './order.entity';
 import { OrderStatus, PaymentStatus } from '../../../common/entities/enums/all.enums';
 
 @Entity('order_events')
-@Index('idx_order_events_order', ['order_id'])
 export class OrderEvent extends BaseEntity {
     @PrimaryGeneratedColumn('uuid')
     id: string;

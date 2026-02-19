@@ -19,14 +19,6 @@ import {
 } from '../../../common/entities/enums/all.enums';
 
 @Entity('orders')
-@Index('idx_orders_user', ['user_id'])
-@Index('idx_orders_business', ['business_id'])
-@Index('idx_orders_offer', ['offer_id'])
-@Index('idx_orders_status', ['status'])
-@Index('idx_orders_payment', ['payment_status'])
-@Index('idx_orders_hold_expiry', ['status', 'hold_expires_at'])
-@Index('idx_orders_pickup_code', ['pickup_code'])
-@Index('idx_orders_pickup_time', ['pickup_time'])
 export class Order extends BaseEntity {
     @Column({ length: 50, unique: true })
     order_number: string;

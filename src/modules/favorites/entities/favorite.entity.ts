@@ -4,8 +4,6 @@ import { Business } from '../../businesses/entities/business.entity';
 import { FavoriteSource } from '../../../common/entities/enums/all.enums';
 
 @Entity('favorites')
-@Index('idx_favorites_user', ['user_id'])
-@Index('idx_favorites_business', ['business_id'])
 @Unique('uq_favorites_user_business', ['user_id', 'business_id'])
 export class Favorite {
     @PrimaryGeneratedColumn('uuid')

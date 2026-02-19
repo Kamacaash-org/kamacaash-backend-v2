@@ -6,6 +6,7 @@ import {
     IsNotEmpty,
     IsOptional,
     IsString,
+    IsUUID,
     Length,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -45,6 +46,10 @@ export class CreateStaffDto {
     @IsNotEmpty()
     @Length(1, 100)
     last_name: string;
+
+    @ApiProperty()
+    @IsUUID()
+    business_id: string;
 
     @ApiPropertyOptional({ example: 'https://cdn.example.com/avatar.jpg' })
     @IsOptional()

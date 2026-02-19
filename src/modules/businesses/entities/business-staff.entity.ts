@@ -5,8 +5,6 @@ import { AppUser } from '../../users/entities/app-user.entity';
 import { StaffUser } from '../../staff/entities/staff-user.entity';
 
 @Entity('business_staff')
-@Index('idx_staff_business', ['business_id'])
-@Index('idx_staff_active', ['business_id', 'is_active'])
 export class BusinessStaff extends BaseEntity {
     @Column({ type: 'uuid' })
     business_id: string;

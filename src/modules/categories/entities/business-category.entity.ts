@@ -12,8 +12,6 @@ import { BaseEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
 
 @Entity('business_categories')
-@Index('idx_categories_country', ['country_code'])
-@Index('idx_categories_active', ['is_active'])
 @Tree('materialized-path')
 export class BusinessCategory extends BaseEntity {
     @Column({ type: 'char', length: 2 })

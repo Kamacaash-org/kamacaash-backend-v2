@@ -16,10 +16,6 @@ import { StaffUser } from '../../staff/entities/staff-user.entity';
 import { ReviewStatus } from '../../../common/entities/enums/all.enums';
 
 @Entity('reviews')
-@Index('idx_reviews_business', ['business_id'])
-@Index('idx_reviews_user', ['user_id'])
-@Index('idx_reviews_rating', ['rating'])
-@Index('idx_reviews_featured', ['is_featured'])
 export class Review extends BaseSoftDeleteEntity {
     @Column({ type: 'uuid' })
     order_id: string;

@@ -4,9 +4,6 @@ import { StaffUser } from '../../staff/entities/staff-user.entity';
 import { UserRole } from '../../../common/entities/enums/all.enums';
 
 @Entity('audit_logs')
-@Index('idx_audit_user', ['user_id', 'staff_user_id'])
-@Index('idx_audit_entity', ['entity_type', 'entity_id'])
-@Index('idx_audit_action', ['action'])
 export class AuditLog {
     @PrimaryGeneratedColumn('uuid')
     id: string;

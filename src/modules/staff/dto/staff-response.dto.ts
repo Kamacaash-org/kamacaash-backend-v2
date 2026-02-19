@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
 import { StaffUser } from '../entities/staff-user.entity';
+import { IsUUID } from 'class-validator';
 
 export class StaffResponseDto {
     @ApiProperty()
@@ -41,6 +42,10 @@ export class StaffResponseDto {
 
     @ApiProperty()
     is_active: boolean;
+
+    @ApiProperty()
+    @IsUUID()
+    business_id: string;
 
     @ApiProperty()
     is_admin_approved: boolean;
@@ -98,6 +103,7 @@ export class StaffResponseDto {
             last_name: staff.last_name,
             full_name: staff.full_name,
             profile_image_url: staff.profile_image_url,
+            business_id: staff.business_id,
             role: staff.role,
             permissions: staff.permissions,
             is_active: staff.is_active,

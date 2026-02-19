@@ -36,6 +36,11 @@ export class CreateBusinessDto {
   @IsUUID()
   category_id: string;
 
+  @ApiProperty()
+  @IsUUID()
+  primary_staff_id: string;
+
+
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()

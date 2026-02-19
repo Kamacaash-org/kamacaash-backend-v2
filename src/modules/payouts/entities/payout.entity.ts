@@ -9,10 +9,6 @@ import {
 } from '../../../common/entities/enums/all.enums';
 
 @Entity('payouts')
-@Index('idx_payouts_business', ['business_id'])
-@Index('idx_payouts_status', ['status'])
-@Index('idx_payouts_period', ['period_start', 'period_end'])
-@Index('idx_payouts_scheduled', ['scheduled_for'])
 export class Payout extends BaseEntity {
     @Column({ length: 50, unique: true })
     payout_number: string;

@@ -9,6 +9,7 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { BusinessResponseDto } from './dto/business-response.dto';
 import { Country } from '../countries/entities/country.entity';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
+import { StaffUser } from '../staff/entities/staff-user.entity';
 
 @Injectable()
 export class BusinessesService {
@@ -17,6 +18,8 @@ export class BusinessesService {
         private businessesRepository: Repository<Business>,
         @InjectRepository(Country)
         private countriesRepository: Repository<Country>,
+        @InjectRepository(StaffUser)
+        private staffRepository: Repository<StaffUser>,
     ) { }
 
     private async getCountryOrThrow(countryCode: string): Promise<Country> {
@@ -51,6 +54,12 @@ export class BusinessesService {
         });
 
         const created = await this.businessesRepository.save(business);
+        // Sync staff.business_id
+        if (created.primary_staff_id) {
+            await this.staffRepository.update(created.primary_staff_id, {
+                business_id: created.id,
+            });
+        }
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.BUSINESS.CREATED,
@@ -119,6 +128,9 @@ export class BusinessesService {
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
 
         const { latitude, longitude, country_code, ...rest } = updateBusinessDto;
+
+        const oldPrimaryStaffId = business.primary_staff_id;
+        const newPrimaryStaffId = updateBusinessDto.primary_staff_id;
         const updateData: Partial<Business> = { ...rest };
 
         if (latitude !== undefined && longitude !== undefined) {
@@ -134,6 +146,23 @@ export class BusinessesService {
             updateData.currency_code = country.currency_code;
             updateData.timezone = country.default_timezone;
             updateData.default_language = country.default_language;
+        }
+
+        // If primary_staff_id changed, update references
+        if (newPrimaryStaffId && newPrimaryStaffId !== oldPrimaryStaffId) {
+            // Clear old staff.business_id
+            if (oldPrimaryStaffId) {
+                await this.staffRepository.update(oldPrimaryStaffId, {
+                    business_id: "",
+                });
+            }
+
+            // Assign new staff.business_id
+            await this.staffRepository.update(newPrimaryStaffId, {
+                business_id: business.id,
+            });
+
+            updateData.primary_staff_id = newPrimaryStaffId;
         }
 
         await this.businessesRepository.update(id, updateData);

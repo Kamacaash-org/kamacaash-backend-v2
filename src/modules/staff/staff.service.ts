@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StaffUser } from './entities/staff-user.entity';
@@ -16,12 +16,16 @@ import {
     StaffSessionResponseDto,
 } from './dto/staff-auth-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
+import { StaffAuthUserDto } from './dto/staff-auth-user.dto';
+import { Country } from '../countries/entities/country.entity';
 
 @Injectable()
 export class StaffService {
     constructor(
         @InjectRepository(StaffUser)
         private staffRepository: Repository<StaffUser>,
+        @InjectRepository(Country)
+        private countryRepository: Repository<Country>,
         private jwtService: JwtService,
     ) { }
 
@@ -56,15 +60,30 @@ export class StaffService {
     }
 
     private generateTokens(staff: StaffUser): StaffSessionResponseDto {
-        const payload = { sub: staff.id, username: staff.username, role: staff.role };
+        const payload = { sub: staff.id, username: staff.username, country_code: staff.country_code, role: staff.role };
         return {
             access_token: this.jwtService.sign(payload),
             refresh_token: this.jwtService.sign(payload, { expiresIn: '7d' }),
-            user: StaffResponseDto.fromEntity(staff),
+            user: StaffAuthUserDto.toAuthUser(staff),
         };
     }
 
-    async create(createStaffDto: CreateStaffDto): Promise<ApiResponseDto<StaffResponseDto>> {
+    async create(createStaffDto: CreateStaffDto, currentUser: any): Promise<ApiResponseDto<StaffResponseDto>> {
+
+        // console.log('Creating staff with data:', createStaffDto);
+        // console.log('Current user from token:', currentUser);
+        const countryCodeFromToken = currentUser.country_code;
+        const created_by = currentUser.id;
+
+
+        const country = await this.countryRepository.findOne({
+            where: { iso_code_3166: countryCodeFromToken },
+        });
+
+        if (!country) {
+            throw new BadRequestException('Invalid country from token');
+        }
+
         const existing = await this.staffRepository.findOne({
             where: [{ email: createStaffDto.email }, { phone_e164: createStaffDto.phone_e164 }],
         });
@@ -82,11 +101,16 @@ export class StaffService {
         const staff = this.staffRepository.create({
             email: createStaffDto.email,
             username: createStaffDto.username,
-            country_code: createStaffDto.country_code?.toUpperCase(),
+            // 🔥 from token
+            country_code: country.iso_code_3166,
+            phone_code: country.phone_code,
+            created_by: created_by,
             phone_e164: createStaffDto.phone_e164,
             first_name: createStaffDto.first_name,
             last_name: createStaffDto.last_name,
+            full_name: `${createStaffDto.first_name} ${createStaffDto.last_name}`,
             profile_image_url: createStaffDto.profile_image_url,
+            sex: createStaffDto.sex,
             password_hash,
             role: createStaffDto.role,
             permissions: createStaffDto.permissions ?? [],
@@ -148,6 +172,10 @@ export class StaffService {
         if (updateStaffDto.password) {
             payload.password_hash = await bcrypt.hash(updateStaffDto.password, 10);
             delete (payload as any).password;
+        }
+
+        if (updateStaffDto.first_name || updateStaffDto.last_name) {
+            payload.full_name = `${updateStaffDto.first_name ?? staff.first_name} ${updateStaffDto.last_name ?? staff.last_name}`;
         }
 
         await this.staffRepository.update(id, payload);

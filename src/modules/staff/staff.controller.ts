@@ -8,6 +8,8 @@ import {
     Delete,
     Query,
     Patch,
+    Request,
+    UseGuards,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -15,14 +17,15 @@ import { UpdateStaffDto } from './dto/update-staff.dto';
 import { StaffLoginDto } from './dto/staff-login.dto';
 import { StaffVerify2faDto } from './dto/staff-verify-2fa.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { StaffResponseDto } from './dto/staff-response.dto';
 import {
-  StaffLogin2faRequiredResponseDto,
-  StaffSessionResponseDto,
+    StaffLogin2faRequiredResponseDto,
+    StaffSessionResponseDto,
 } from './dto/staff-auth-response.dto';
 import { ApproveStaffDto } from './dto/approve-staff.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('staff')
 @Controller('staff')
@@ -41,10 +44,14 @@ export class StaffController {
         return this.staffService.verify2fa(verifyDto);
     }
 
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Post()
     @ApiOperation({ summary: 'Create staff user' })
-    create(@Body() createStaffDto: CreateStaffDto): Promise<ApiResponseDto<StaffResponseDto>> {
-        return this.staffService.create(createStaffDto);
+    create(@Body() createStaffDto: CreateStaffDto, @Request() req,
+    ): Promise<ApiResponseDto<StaffResponseDto>> {
+        return this.staffService.create(createStaffDto, req.user);
     }
 
     @Get()

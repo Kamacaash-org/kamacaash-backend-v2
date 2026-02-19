@@ -4,10 +4,6 @@ import { Country } from '../../countries/entities/country.entity';
 import { UserStatus } from '../../../common/entities/enums/all.enums';
 
 @Entity('app_users')
-@Index('idx_app_users_email', ['email'])
-@Index('idx_app_users_phone', ['phone_e164'])
-@Index('idx_app_users_status', ['status'])
-@Index('idx_app_users_otp', ['otp_expires_at'])
 export class AppUser extends BaseSoftDeleteEntity {
     @Column({ length: 255, unique: true })
     email: string;

@@ -12,7 +12,7 @@ export default registerAs('database', () => ({
     },
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     synchronize: process.env.NODE_ENV === 'development',
-    logging: process.env.NODE_ENV === 'development',
+    logging: process.env.NODE_ENV === 'test',
     migrations: [__dirname + '/../migrations/*{.ts,.js}'],
     cli: {
         migrationsDir: 'src/migrations',

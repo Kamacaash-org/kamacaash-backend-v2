@@ -6,9 +6,6 @@ import { StaffUser } from '../../staff/entities/staff-user.entity';
 import { NotificationType } from '../../../common/entities/enums/all.enums';
 
 @Entity('notifications')
-@Index('idx_notifications_user', ['user_id', 'status'])
-@Index('idx_notifications_business', ['business_id', 'status'])
-@Index('idx_notifications_retry', ['next_retry_at'])
 export class Notification extends BaseEntity {
     @Column({ type: 'uuid', nullable: true })
     user_id: string;

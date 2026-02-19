@@ -9,11 +9,6 @@ import {
 } from '../../../common/entities/enums/all.enums';
 
 @Entity('payments')
-@Index('idx_payments_order', ['order_id'])
-@Index('idx_payments_user', ['user_id'])
-@Index('idx_payments_business', ['business_id'])
-@Index('idx_payments_status', ['status'])
-@Index('idx_payments_provider', ['provider', 'provider_transaction_id'])
 export class Payment extends BaseEntity {
     @Column({ length: 50, unique: true })
     payment_number: string;
