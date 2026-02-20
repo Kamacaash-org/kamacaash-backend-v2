@@ -10,7 +10,7 @@ import {
 } from 'typeorm';
 import { BaseEntity, BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
-import { StaffUser } from 'src/modules/staff/entities/staff-user.entity';
+import { StaffUser } from '../../staff/entities/staff-user.entity';
 
 @Entity('business_categories')
 @Tree('materialized-path')
