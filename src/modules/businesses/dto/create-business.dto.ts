@@ -12,6 +12,8 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CreateBusinessBankAccountDto } from './BankAccount.dto';
+import { CreateBusinessOpeningHourDto } from './OpeningHours.dto';
 
 export class CreateBusinessDto {
   @ApiProperty()
@@ -53,10 +55,6 @@ export class CreateBusinessDto {
   @IsString({ each: true })
   tags?: string[];
 
-  @ApiProperty({ minLength: 2, maxLength: 2 })
-  @IsString()
-  @Length(2, 2)
-  country_code: string;
 
   @ApiProperty()
   @IsString()
@@ -192,4 +190,13 @@ export class CreateBusinessDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ type: [CreateBusinessOpeningHourDto] })
+  @IsOptional()
+  @IsArray()
+  opening_hours?: CreateBusinessOpeningHourDto[];
+
+  @ApiPropertyOptional({ type: CreateBusinessBankAccountDto })
+  @IsOptional()
+  bank_account?: CreateBusinessBankAccountDto;
 }

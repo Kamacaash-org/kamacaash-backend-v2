@@ -9,9 +9,9 @@ import { map } from 'rxjs/operators';
 
 export interface Response<T> {
     success: boolean;
-    data: T;
     statusCode: number;
     message?: string;
+    data: T;
     meta?: any;
 }
 
@@ -23,13 +23,23 @@ export class TransformInterceptor<T>
         next: CallHandler,
     ): Observable<Response<T>> {
         return next.handle().pipe(
-            map((data) => ({
-                success: true,
-                statusCode: context.switchToHttp().getResponse().statusCode,
-                message: data?.message || 'Operation successful',
-                data: data?.data || data,
-                meta: data?.meta,
-            })),
+            map((payload) => {
+                const isApiResponseShape =
+                    payload &&
+                    typeof payload === 'object' &&
+                    'message' in payload &&
+                    'data' in payload;
+
+                return {
+                    success: true,
+                    statusCode: context.switchToHttp().getResponse().statusCode,
+                    message: isApiResponseShape
+                        ? (payload as any).message
+                        : 'Operation successful',
+                    data: isApiResponseShape ? (payload as any).data : payload,
+                    meta: isApiResponseShape ? (payload as any).meta : undefined,
+                };
+            }),
         );
     }
 }

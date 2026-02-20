@@ -16,13 +16,15 @@ export class CategoriesService {
     ) { }
 
     private async getCategoryByIdOrThrow(id: string): Promise<BusinessCategory> {
-        const category = await this.categoriesRepository.findOne({ where: { id } });
+        const category = await this.categoriesRepository.findOne({ where: { id, is_archived: false } });
         if (!category) throw new NotFoundException(`${DEFAULT_MESSAGES.CATEGORY.NOT_FOUND}: ${id}`);
         return category;
     }
 
     async findAll(): Promise<ApiResponseDto<CategoryResponseDto[]>> {
-        const categories = await this.categoriesRepository.findTrees();
+        const categories = await this.categoriesRepository.find({
+            where: { is_archived: false },
+        });
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.CATEGORY.LIST_FETCHED,
             categories.map((category) => CategoryResponseDto.fromEntity(category, true)),
@@ -38,7 +40,7 @@ export class CategoriesService {
     }
 
     async findBySlug(slug: string): Promise<ApiResponseDto<CategoryResponseDto>> {
-        const category = await this.categoriesRepository.findOne({ where: { slug } });
+        const category = await this.categoriesRepository.findOne({ where: { slug, is_archived: false } });
         if (!category) throw new NotFoundException(`${DEFAULT_MESSAGES.CATEGORY.NOT_FOUND}: ${slug}`);
 
         return ApiResponseDto.success(
@@ -47,14 +49,24 @@ export class CategoriesService {
         );
     }
 
-    async create(createCategoryDto: CreateCategoryDto): Promise<ApiResponseDto<CategoryResponseDto>> {
+    async create(
+        createCategoryDto: CreateCategoryDto,
+        currentUser: any,
+    ): Promise<ApiResponseDto<CategoryResponseDto>> {
+
+        const countryCodeFromToken = currentUser.country_code;
+        const created_by = currentUser.id;
+
         const category: BusinessCategory = this.categoriesRepository.create({
             ...createCategoryDto,
-            country_code: createCategoryDto.country_code.toUpperCase(),
+            country_code: countryCodeFromToken,
+            created_by,
         } as DeepPartial<BusinessCategory>);
 
         if (createCategoryDto.parent_id) {
-            category.parent = await this.getCategoryByIdOrThrow(createCategoryDto.parent_id);
+            category.parent = await this.getCategoryByIdOrThrow(
+                createCategoryDto.parent_id,
+            );
         }
 
         const created = await this.categoriesRepository.save(category);
@@ -64,16 +76,30 @@ export class CategoriesService {
             CategoryResponseDto.fromEntity(created, false),
         );
     }
+    async update(
+        id: string,
+        updateCategoryDto: UpdateCategoryDto,
+        currentUser: any,
+    ): Promise<ApiResponseDto<CategoryResponseDto>> {
 
-    async update(id: string, updateCategoryDto: UpdateCategoryDto): Promise<ApiResponseDto<CategoryResponseDto>> {
+        const updated_by = currentUser.id;
+        const countryCodeFromToken = currentUser.country_code;
+
         const category = await this.getCategoryByIdOrThrow(id);
-        const updated: BusinessCategory = this.categoriesRepository.merge(category, {
-            ...updateCategoryDto,
-            country_code: updateCategoryDto.country_code?.toUpperCase(),
-        });
+
+        const updated: BusinessCategory = this.categoriesRepository.merge(
+            category,
+            {
+                ...updateCategoryDto,
+                country_code: countryCodeFromToken,
+                updated_by,
+            },
+        );
 
         if (updateCategoryDto.parent_id) {
-            updated.parent = await this.getCategoryByIdOrThrow(updateCategoryDto.parent_id);
+            updated.parent = await this.getCategoryByIdOrThrow(
+                updateCategoryDto.parent_id,
+            );
         }
 
         const saved = await this.categoriesRepository.save(updated);
@@ -84,9 +110,25 @@ export class CategoriesService {
         );
     }
 
-    async remove(id: string): Promise<ApiResponseDto<{ id: string }>> {
-        await this.getCategoryByIdOrThrow(id);
-        await this.categoriesRepository.delete(id);
+    async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {
+
+        const category = await this.categoriesRepository.findOne({
+            where: {
+                id,
+                country_code: currentUser.country_code,
+                is_archived: false,
+            },
+        });
+
+        if (!category) {
+            throw new NotFoundException(`${DEFAULT_MESSAGES.CATEGORY.NOT_FOUND}: ${id}`);
+        }
+
+        category.is_archived = true;
+        category.archived_by = currentUser.id;
+        category.archived_at = new Date();
+
+        await this.categoriesRepository.save(category);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.CATEGORY.DELETED, { id });
     }

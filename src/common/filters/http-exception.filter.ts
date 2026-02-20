@@ -7,6 +7,7 @@ import {
     Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { QueryFailedError } from 'typeorm';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -17,20 +18,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const response = ctx.getResponse<Response>();
         const request = ctx.getRequest<Request>();
 
-        const status =
+        let status =
             exception instanceof HttpException
                 ? exception.getStatus()
                 : HttpStatus.INTERNAL_SERVER_ERROR;
 
-        const exceptionResponse =
-            exception instanceof HttpException
-                ? exception.getResponse()
-                : 'Internal server error';
+        let message = this.extractMessage(exception);
 
-        const message =
-            typeof exceptionResponse === 'string'
-                ? exceptionResponse
-                : (exceptionResponse as any).message || exceptionResponse;
+        if (exception instanceof QueryFailedError) {
+            const code = (exception as any)?.driverError?.code;
+            if (code === '23505') {
+                status = HttpStatus.CONFLICT;
+                message = 'A record with this value already exists';
+            }
+        }
 
         this.logger.error(
             `${request.method} ${request.url}`,
@@ -40,10 +41,32 @@ export class HttpExceptionFilter implements ExceptionFilter {
         response.status(status).json({
             success: false,
             statusCode: status,
-            message: Array.isArray(message) ? message[0] : message,
-            error: typeof exceptionResponse === 'object' ? (exceptionResponse as any).error : undefined,
-            timestamp: new Date().toISOString(),
-            path: request.url,
+            message,
         });
+    }
+
+    private extractMessage(exception: unknown): string {
+        if (!(exception instanceof HttpException)) {
+            return 'Something went wrong. Please try again later.';
+        }
+
+        const response = exception.getResponse();
+        const rawMessage =
+            typeof response === 'string'
+                ? response
+                : (response as any)?.message;
+
+        const message = Array.isArray(rawMessage)
+            ? rawMessage[0]
+            : rawMessage;
+
+        if (typeof message !== 'string' || !message.trim()) {
+            return 'Request failed';
+        }
+
+        // Hide identifiers from user-facing messages like "Not found: <id>".
+        const idSuffixPattern = /^(.+?):\s*[a-zA-Z0-9-_.]{2,}$/;
+        const matched = message.match(idSuffixPattern);
+        return matched ? matched[1] : message;
     }
 }

@@ -29,8 +29,8 @@ export class BusinessesController {
     @ApiBearerAuth()
     @Post()
     @ApiOperation({ summary: 'Create business (Owner)' })
-    create(@Body() createBusinessDto: CreateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
-        return this.businessesService.create(createBusinessDto);
+    create(@Body() createBusinessDto: CreateBusinessDto, @Request() req): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.create(createBusinessDto, req.user);
     }
 
     @Get()
@@ -55,15 +55,15 @@ export class BusinessesController {
     @ApiBearerAuth()
     @Put(':id')
     @ApiOperation({ summary: 'Update business' })
-    update(@Param('id') id: string, @Body() updateBusinessDto: UpdateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
-        return this.businessesService.update(id, updateBusinessDto);
+    update(@Param('id') id: string, @Body() updateBusinessDto: UpdateBusinessDto, @Request() req): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.update(id, updateBusinessDto, req.user);
     }
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @Delete(':id')
     @ApiOperation({ summary: 'Soft delete business' })
-    remove(@Param('id') id: string): Promise<ApiResponseDto<{ id: string }>> {
-        return this.businessesService.remove(id);
+    remove(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<{ id: string }>> {
+        return this.businessesService.remove(id, req.user);
     }
 }

@@ -69,9 +69,6 @@ export class StaffService {
     }
 
     async create(createStaffDto: CreateStaffDto, currentUser: any): Promise<ApiResponseDto<StaffResponseDto>> {
-
-        // console.log('Creating staff with data:', createStaffDto);
-        // console.log('Current user from token:', currentUser);
         const countryCodeFromToken = currentUser.country_code;
         const created_by = currentUser.id;
 
@@ -81,7 +78,7 @@ export class StaffService {
         });
 
         if (!country) {
-            throw new BadRequestException('Invalid country from token');
+            throw new BadRequestException(DEFAULT_MESSAGES.COUNTRY.NOT_FOUND);
         }
 
         const existing = await this.staffRepository.findOne({
@@ -129,7 +126,9 @@ export class StaffService {
 
     async findAll(paginationDto: PaginationDto): Promise<ApiResponseDto<StaffResponseDto[]>> {
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
-        const query = this.staffRepository.createQueryBuilder('staff');
+        const query = this.staffRepository
+            .createQueryBuilder('staff')
+            .where('staff.is_archived = :isArchived', { isArchived: false });
 
         if (search) {
             query.where('staff.email ILIKE :search OR staff.first_name ILIKE :search OR staff.last_name ILIKE :search', {
@@ -151,7 +150,7 @@ export class StaffService {
     }
 
     async findOne(id: string): Promise<ApiResponseDto<StaffResponseDto>> {
-        const staff = await this.staffRepository.findOne({ where: { id } });
+        const staff = await this.staffRepository.findOne({ where: { id, is_archived: false } });
         if (!staff) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
@@ -160,13 +159,27 @@ export class StaffService {
         );
     }
 
-    async update(id: string, updateStaffDto: UpdateStaffDto): Promise<ApiResponseDto<StaffResponseDto>> {
+    async update(id: string, updateStaffDto: UpdateStaffDto, currentUser: any): Promise<ApiResponseDto<StaffResponseDto>> {
+
+        const countryCodeFromToken = currentUser.country_code;
+        const updated_by = currentUser.id;
+
+
+        const country = await this.countryRepository.findOne({
+            where: { iso_code_3166: countryCodeFromToken },
+        });
+
+        if (!country) {
+            throw new BadRequestException(DEFAULT_MESSAGES.COUNTRY.NOT_FOUND);
+        }
+
         const staff = await this.staffRepository.findOne({ where: { id } });
         if (!staff) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
 
         const payload: Partial<StaffUser> = {
             ...updateStaffDto,
-            country_code: updateStaffDto.country_code?.toUpperCase(),
+            country_code: country.iso_code_3166,
+            updated_by: updated_by,
         };
 
         if (updateStaffDto.password) {
@@ -189,15 +202,80 @@ export class StaffService {
         );
     }
 
-    async remove(id: string): Promise<ApiResponseDto<{ id: string }>> {
-        const staff = await this.staffRepository.findOne({ where: { id } });
-        if (!staff) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
+    async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {
+        const staff = await this.staffRepository.findOne({
+            where: {
+                id,
+                country_code: currentUser.country_code,
+                is_archived: false,
+            },
+        });
 
-        await this.staffRepository.softDelete(id);
+        if (!staff) {
+            throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
+        }
+
+        staff.is_archived = true;
+        staff.archived_by = currentUser.id;
+        staff.archived_at = new Date();
+
+        await this.staffRepository.save(staff);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.STAFF.DELETED, { id });
     }
 
+
+    async changePassword(
+        staffId: string,
+        currentPassword: string,
+        newPassword: string,
+    ): Promise<ApiResponseDto<null>> {
+        const staff = await this.staffRepository.findOne({
+            where: { id: staffId },
+        });
+
+        if (!staff) {
+            throw new NotFoundException(DEFAULT_MESSAGES.STAFF.NOT_FOUND);
+        }
+
+        // Compare current password
+        const isMatch = await bcrypt.compare(
+            currentPassword,
+            staff.password_hash,
+        );
+
+        if (!isMatch) {
+            throw new BadRequestException(
+                DEFAULT_MESSAGES.AUTH.INVALID_CURRENT_PASSWORD,
+            );
+        }
+
+        // Prevent same password reuse
+        const isSamePassword = await bcrypt.compare(
+            newPassword,
+            staff.password_hash,
+        );
+
+        if (isSamePassword) {
+            throw new BadRequestException(
+                DEFAULT_MESSAGES.AUTH.PASSWORD_MUST_BE_DIFFERENT,
+            );
+        }
+
+        // Hash new password
+        const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+        staff.password_hash = newPasswordHash;
+        staff.password_modified_by = staffId;
+        staff.password_modified_at = new Date();
+
+        await this.staffRepository.save(staff);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.AUTH.PASSWORD_CHANGED,
+            null,
+        );
+    }
     async approve(id: string, approverId: string): Promise<ApiResponseDto<StaffResponseDto>> {
         const staff = await this.staffRepository.findOne({ where: { id } });
         if (!staff) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);

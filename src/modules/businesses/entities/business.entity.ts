@@ -5,6 +5,7 @@ import {
     ManyToOne,
     JoinColumn,
     OneToMany,
+    OneToOne,
 } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Country } from '../../countries/entities/country.entity';
@@ -15,6 +16,8 @@ import {
     BusinessStatus,
     BusinessVerificationStatus,
 } from '../../../common/entities/enums/all.enums';
+import { BusinessBankAccount } from './business-bank-account.entity';
+import { BusinessOpeningHours } from './business-opening-hours.entity';
 
 @Entity('businesses')
 export class Business extends BaseSoftDeleteEntity {
@@ -150,6 +153,39 @@ export class Business extends BaseSoftDeleteEntity {
 
     @Column({ default: false })
     is_archived: boolean;
+
+    @Column({ type: 'uuid', nullable: true })
+    archived_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'archived_by' })
+    archiver: StaffUser;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    archived_at: Date;
+
+    @Column({ type: 'uuid', nullable: true })
+    created_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'created_by' })
+    creator: StaffUser;
+
+    @Column({ type: 'uuid', nullable: true })
+    updated_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'updated_by' })
+    updater: StaffUser;
+
+    @OneToOne(() => BusinessBankAccount, (bank) => bank.business, { cascade: true })
+    bank_account: BusinessBankAccount;
+
+    @OneToMany(() => BusinessOpeningHours, (hour) => hour.business, {
+        cascade: true,
+        orphanedRowAction: 'delete',
+    })
+    opening_hours: BusinessOpeningHours[];
 
     @Column({ default: false })
     is_featured: boolean;

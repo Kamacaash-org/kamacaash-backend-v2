@@ -23,13 +23,9 @@ export class CreateStaffDto {
     @Length(3, 100)
     username?: string;
 
-    @ApiPropertyOptional({ example: 'US', minLength: 2, maxLength: 2 })
-    @IsOptional()
-    @IsString()
-    @Length(2, 2)
-    country_code?: string;
 
-    @ApiProperty({ example: '+15550001111' })
+
+    @ApiProperty({ example: '617522228' })
     @IsString()
     @IsNotEmpty()
     @Length(5, 50)

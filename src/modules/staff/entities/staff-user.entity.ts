@@ -28,7 +28,7 @@ export class StaffUser extends BaseSoftDeleteEntity {
 
 
     @Column({ type: 'uuid', nullable: true })
-    business_id: string;
+    business_id?: string | null;
 
     @ManyToOne(() => Business, { nullable: true })
     @JoinColumn({ name: 'business_id' })
@@ -95,6 +95,32 @@ export class StaffUser extends BaseSoftDeleteEntity {
 
     @Column({ type: 'timestamptz', nullable: true })
     approved_at: Date;
+
+
+    @Column({ default: false })
+    is_archived: boolean;
+
+    @Column({ type: 'uuid', nullable: true })
+    archived_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'archived_by' })
+    archiver: StaffUser;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    archived_at: Date;
+
+    @Column({ type: 'uuid', nullable: true })
+    password_modified_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'password_modified_by' })
+    password_modifier: StaffUser;
+
+
+    @Column({ type: 'timestamptz', nullable: true })
+    password_modified_at: Date;
+
 
     @Column({ default: true })
     must_change_password: boolean;

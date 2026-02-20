@@ -6,6 +6,7 @@ export const DEFAULT_MESSAGES = {
     UPDATED: 'Country updated successfully',
     DELETED: 'Country deleted successfully',
     NOT_FOUND: 'Country not found',
+
     ALREADY_EXISTS: 'Country already exists',
   },
   AUTH: {
@@ -14,6 +15,11 @@ export const DEFAULT_MESSAGES = {
     PROFILE_FETCHED: 'Profile fetched successfully',
     USER_NOT_FOUND: 'User not found',
     INVALID_OTP: 'Invalid OTP',
+    OTP_EXPIRED: 'OTP has expired',
+    INVALID_CREDENTIALS: 'Invalid credentials',
+    INVALID_CURRENT_PASSWORD: 'Current password is incorrect',
+    PASSWORD_MUST_BE_DIFFERENT: 'New password must be different from the current password',
+    PASSWORD_CHANGED: 'Password changed successfully',
   },
   STAFF: {
     LOGIN_SUCCESS: 'Staff login successful',
@@ -73,5 +79,6 @@ export const DEFAULT_MESSAGES = {
     CREATED: 'Created successfully',
     UPDATED: 'Updated successfully',
     DELETED: 'Deleted successfully',
+    COUNTRY_CODE_NOT_FOUND_FROM_TOKE: 'Country code not found from token',
   },
 } as const;

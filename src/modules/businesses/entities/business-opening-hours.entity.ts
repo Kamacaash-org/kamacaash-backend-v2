@@ -21,4 +21,6 @@ export class BusinessOpeningHours extends BaseEntity {
 
     @Column({ select: false, insert: false, update: false, nullable: true })
     is_closed: boolean;
+
+
 }

@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Put, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -29,21 +30,34 @@ export class CategoriesController {
         return this.categoriesService.findOne(id);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Post()
     @ApiOperation({ summary: 'Create category (Admin)' })
-    create(@Body() createCategoryDto: CreateCategoryDto): Promise<ApiResponseDto<CategoryResponseDto>> {
-        return this.categoriesService.create(createCategoryDto);
+    create(
+        @Body() createCategoryDto: CreateCategoryDto,
+        @Request() req,
+    ): Promise<ApiResponseDto<CategoryResponseDto>> {
+        return this.categoriesService.create(createCategoryDto, req.user);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Put(':id')
     @ApiOperation({ summary: 'Update category (Admin)' })
-    update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto): Promise<ApiResponseDto<CategoryResponseDto>> {
-        return this.categoriesService.update(id, updateCategoryDto);
+    update(
+        @Param('id') id: string,
+        @Body() updateCategoryDto: UpdateCategoryDto,
+        @Request() req,
+    ): Promise<ApiResponseDto<CategoryResponseDto>> {
+        return this.categoriesService.update(id, updateCategoryDto, req.user);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Delete(':id')
     @ApiOperation({ summary: 'Delete category (Admin)' })
-    remove(@Param('id') id: string): Promise<ApiResponseDto<{ id: string }>> {
-        return this.categoriesService.remove(id);
+    remove(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<{ id: string }>> {
+        return this.categoriesService.remove(id, req.user);
     }
 }

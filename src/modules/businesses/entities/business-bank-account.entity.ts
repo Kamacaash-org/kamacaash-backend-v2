@@ -7,18 +7,27 @@ export class BusinessBankAccount extends BaseEntity {
     @Column({ type: 'uuid' })
     business_id: string;
 
-    @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Business, (business) => business.bank_account, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'business_id' })
     business: Business;
 
-    @Column({ length: 255 })
+    @Column({ length: 255, nullable: true })
     account_holder_name: string;
 
-    @Column({ length: 255 })
+    @Column({ length: 255, nullable: true })
     bank_name: string;
 
-    @Column({ length: 100 })
+    @Column({ length: 100, nullable: true })
     account_number: string;
+
+    @Column({ length: 255, nullable: true })
+    merchant_holder_name: string;
+
+    @Column({ length: 255, nullable: true })
+    merchant_name: string;
+
+    @Column({ length: 255 })
+    merchant_number: string;
 
     @Column({ length: 50, nullable: true })
     sort_code: string;

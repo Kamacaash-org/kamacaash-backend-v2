@@ -10,7 +10,9 @@ import { BusinessResponseDto } from './dto/business-response.dto';
 import { Country } from '../countries/entities/country.entity';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffUser } from '../staff/entities/staff-user.entity';
-
+import { BusinessOpeningHours } from './entities/business-opening-hours.entity';
+import { BusinessBankAccount } from './entities/business-bank-account.entity';
+import { DataSource } from 'typeorm';
 @Injectable()
 export class BusinessesService {
     constructor(
@@ -20,6 +22,7 @@ export class BusinessesService {
         private countriesRepository: Repository<Country>,
         @InjectRepository(StaffUser)
         private staffRepository: Repository<StaffUser>,
+        private dataSource: DataSource,
     ) { }
 
     private async getCountryOrThrow(countryCode: string): Promise<Country> {
@@ -36,43 +39,101 @@ export class BusinessesService {
             .replace(/(^-|-$)+/g, '');
     }
 
-    async create(createBusinessDto: CreateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
-        const { latitude, longitude, country_code, ...rest } = createBusinessDto;
-        const country = await this.getCountryOrThrow(country_code);
+    async create(
+        createBusinessDto: CreateBusinessDto,
+        currentUser: any,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
 
-        const business = this.businessesRepository.create({
-            ...rest,
-            country_code: country.iso_code_3166,
-            currency_code: country.currency_code,
-            timezone: country.default_timezone,
-            default_language: country.default_language,
-            location: {
-                type: 'Point',
-                coordinates: [longitude, latitude],
-            },
-            slug: this.generateSlug(rest.display_name),
-        });
+        return await this.dataSource.transaction(async (manager) => {
+            const {
+                latitude,
+                longitude,
+                opening_hours,
+                bank_account,
+                ...rest
+            } = createBusinessDto;
 
-        const created = await this.businessesRepository.save(business);
-        // Sync staff.business_id
-        if (created.primary_staff_id) {
-            await this.staffRepository.update(created.primary_staff_id, {
-                business_id: created.id,
+            const country = await this.getCountryOrThrow(currentUser.country_code);
+
+            const business = manager.create(Business, {
+                ...rest,
+                country_code: country.iso_code_3166,
+                currency_code: country.currency_code,
+                timezone: country.default_timezone,
+                default_language: country.default_language,
+                created_by: currentUser.id,
+                location: {
+                    type: 'Point',
+                    coordinates: [longitude, latitude],
+                },
+                slug: this.generateSlug(rest.display_name),
             });
-        }
 
-        return ApiResponseDto.success(
-            DEFAULT_MESSAGES.BUSINESS.CREATED,
-            BusinessResponseDto.fromEntity(created),
-        );
+            const created = await manager.save(business);
+
+            /*
+            ─────────────────────────────
+            CREATE OPENING HOURS
+            ─────────────────────────────
+            */
+
+            if (opening_hours?.length) {
+                const hoursEntities = opening_hours.map((h) =>
+                    manager.create(BusinessOpeningHours, {
+                        business_id: created.id,
+                        day_of_week: h.day_of_week,
+                        opens_at: h.opens_at,
+                        closes_at: h.closes_at,
+                    }),
+                );
+
+                await manager.save(hoursEntities);
+            }
+
+            /*
+            ─────────────────────────────
+            CREATE BANK ACCOUNT
+            ─────────────────────────────
+            */
+
+            if (bank_account) {
+                const bank = manager.create(BusinessBankAccount, {
+                    ...bank_account,
+                    business_id: created.id,
+                });
+
+                await manager.save(bank);
+            }
+
+            /*
+            ─────────────────────────────
+            SYNC PRIMARY STAFF
+            ─────────────────────────────
+            */
+
+            if (created.primary_staff_id) {
+                await manager.update(StaffUser, created.primary_staff_id, {
+                    business_id: created.id,
+                });
+            }
+
+            return ApiResponseDto.success(
+                DEFAULT_MESSAGES.BUSINESS.CREATED,
+                BusinessResponseDto.fromEntity(created),
+            );
+        });
     }
 
     async findAll(paginationDto: PaginationDto): Promise<ApiResponseDto<BusinessResponseDto[]>> {
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
-        const query = this.businessesRepository.createQueryBuilder('business');
+
+        const query = this.businessesRepository.createQueryBuilder('business')
+            .leftJoinAndSelect('business.bank_account', 'bank_account')
+            .leftJoinAndSelect('business.opening_hours', 'opening_hours')
+            .where('business.is_archived = :isArchived', { isArchived: false });
 
         if (search) {
-            query.where('business.display_name ILIKE :search OR business.description ILIKE :search', { search: `%${search}%` });
+            query.andWhere('business.display_name ILIKE :search OR business.description ILIKE :search', { search: `%${search}%` });
         }
 
         query.orderBy('business.created_at', order);
@@ -89,7 +150,7 @@ export class BusinessesService {
     }
 
     async findOne(id: string): Promise<ApiResponseDto<BusinessResponseDto>> {
-        const business = await this.businessesRepository.findOne({ where: { id } });
+        const business = await this.businessesRepository.findOne({ where: { id, is_archived: false } });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
@@ -123,65 +184,137 @@ export class BusinessesService {
         );
     }
 
-    async update(id: string, updateBusinessDto: UpdateBusinessDto): Promise<ApiResponseDto<BusinessResponseDto>> {
-        const business = await this.businessesRepository.findOne({ where: { id } });
-        if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+    async update(
+        id: string,
+        updateBusinessDto: UpdateBusinessDto,
+        currentUser: any,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return await this.dataSource.transaction(async (manager) => {
+            const businessRepo = manager.getRepository(Business);
+            const staffRepo = manager.getRepository(StaffUser);
+            const bankRepo = manager.getRepository(BusinessBankAccount);
+            const hoursRepo = manager.getRepository(BusinessOpeningHours);
 
-        const { latitude, longitude, country_code, ...rest } = updateBusinessDto;
+            const business = await businessRepo.findOne({
+                where: {
+                    id,
+                    country_code: currentUser.country_code,
+                    is_archived: false,
+                },
+                relations: ['bank_account', 'opening_hours'],
+            });
 
-        const oldPrimaryStaffId = business.primary_staff_id;
-        const newPrimaryStaffId = updateBusinessDto.primary_staff_id;
-        const updateData: Partial<Business> = { ...rest };
+            if (!business)
+                throw new NotFoundException(
+                    `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
+                );
 
-        if (latitude !== undefined && longitude !== undefined) {
-            updateData.location = {
-                type: 'Point',
-                coordinates: [longitude, latitude],
+            const {
+                latitude,
+                longitude,
+                primary_staff_id,
+                bank_account,
+                opening_hours,
+                ...rest
+            } = updateBusinessDto;
+
+            const updateData: Partial<Business> = {
+                ...rest,
+                updated_by: currentUser.id,
+                updated_at: new Date(),
             };
-        }
 
-        if (country_code) {
-            const country = await this.getCountryOrThrow(country_code);
+            //  Location update
+            if (latitude !== undefined && longitude !== undefined) {
+                updateData.location = {
+                    type: 'Point',
+                    coordinates: [longitude, latitude],
+                };
+            }
+
+            // Country info always from token
+            const country = await this.getCountryOrThrow(currentUser.country_code);
+
             updateData.country_code = country.iso_code_3166;
             updateData.currency_code = country.currency_code;
             updateData.timezone = country.default_timezone;
             updateData.default_language = country.default_language;
-        }
 
-        // If primary_staff_id changed, update references
-        if (newPrimaryStaffId && newPrimaryStaffId !== oldPrimaryStaffId) {
-            // Clear old staff.business_id
-            if (oldPrimaryStaffId) {
-                await this.staffRepository.update(oldPrimaryStaffId, {
-                    business_id: "",
+            //  Primary staff change
+            if (primary_staff_id && primary_staff_id !== business.primary_staff_id) {
+                if (business.primary_staff_id) {
+                    await staffRepo.update(business.primary_staff_id, {
+                        business_id: null,
+                    });
+                }
+
+                await staffRepo.update(primary_staff_id, {
+                    business_id: business.id,
                 });
+
+                updateData.primary_staff_id = primary_staff_id;
             }
 
-            // Assign new staff.business_id
-            await this.staffRepository.update(newPrimaryStaffId, {
-                business_id: business.id,
+            // Apply primitive updates
+            Object.assign(business, updateData);
+
+            // Replace Opening Hours (RELATIONAL WAY)
+            if (opening_hours) {
+                business.opening_hours = opening_hours.map((hour) =>
+                    hoursRepo.create({
+                        ...hour,
+                        business,
+                    }),
+                );
+            }
+
+            // Update / Create Bank Account (relational way)
+            if (bank_account) {
+                if (business.bank_account) {
+                    Object.assign(business.bank_account, bank_account);
+                } else {
+                    business.bank_account = bankRepo.create(bank_account);
+                }
+            }
+
+            // Save everything (cascade handles relations)
+            await businessRepo.save(business);
+
+            const updated = await businessRepo.findOne({
+                where: { id },
+                relations: ['bank_account', 'opening_hours'],
             });
 
-            updateData.primary_staff_id = newPrimaryStaffId;
-        }
+            if (!updated)
+                throw new NotFoundException(
+                    `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
+                );
 
-        await this.businessesRepository.update(id, updateData);
-
-        const updated = await this.businessesRepository.findOne({ where: { id } });
-        if (!updated) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
-
-        return ApiResponseDto.success(
-            DEFAULT_MESSAGES.BUSINESS.UPDATED,
-            BusinessResponseDto.fromEntity(updated),
-        );
+            return ApiResponseDto.success(
+                DEFAULT_MESSAGES.BUSINESS.UPDATED,
+                BusinessResponseDto.fromEntity(updated),
+            );
+        });
     }
 
-    async remove(id: string): Promise<ApiResponseDto<{ id: string }>> {
-        const business = await this.businessesRepository.findOne({ where: { id } });
-        if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+    async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {
+        const business = await this.businessesRepository.findOne({
+            where: {
+                id,
+                country_code: currentUser.country_code,
+                is_archived: false,
+            },
+        });
 
-        await this.businessesRepository.softDelete(id);
+        if (!business) {
+            throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+        }
 
+        business.is_archived = true;
+        business.archived_by = currentUser.id;
+        business.archived_at = new Date();
+
+        await this.businessesRepository.save(business);
         return ApiResponseDto.success(DEFAULT_MESSAGES.BUSINESS.DELETED, { id });
     }
 }

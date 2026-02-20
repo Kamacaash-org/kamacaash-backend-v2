@@ -26,6 +26,7 @@ import {
 } from './dto/staff-auth-response.dto';
 import { ApproveStaffDto } from './dto/approve-staff.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { ChangePasswordDto } from './dto/ChangePassword.dto';
 
 @ApiTags('staff')
 @Controller('staff')
@@ -66,16 +67,38 @@ export class StaffController {
         return this.staffService.findOne(id);
     }
 
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Put(':id')
     @ApiOperation({ summary: 'Update staff user' })
-    update(@Param('id') id: string, @Body() updateStaffDto: UpdateStaffDto): Promise<ApiResponseDto<StaffResponseDto>> {
-        return this.staffService.update(id, updateStaffDto);
+    update(@Param('id') id: string, @Body() updateStaffDto: UpdateStaffDto, @Request() req): Promise<ApiResponseDto<StaffResponseDto>> {
+        return this.staffService.update(id, updateStaffDto, req.user);
     }
 
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Delete(':id')
     @ApiOperation({ summary: 'Delete staff user' })
-    remove(@Param('id') id: string): Promise<ApiResponseDto<{ id: string }>> {
-        return this.staffService.remove(id);
+    remove(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<{ id: string }>> {
+        return this.staffService.remove(id, req.user);
+    }
+
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Post('change-password')
+    @ApiOperation({ summary: 'Change own password' })
+    changePassword(
+        @Body() dto: ChangePasswordDto,
+        @Request() req,
+    ): Promise<ApiResponseDto<null>> {
+        return this.staffService.changePassword(
+            req.user.id,
+            dto.currentPassword,
+            dto.newPassword,
+        );
     }
 
     @Patch(':id/approve')

@@ -151,6 +151,30 @@ export class BusinessResponseDto {
   @ApiPropertyOptional()
   deleted_at?: Date;
 
+  @ApiPropertyOptional({ type: Object })
+  bank_account?: {
+    account_holder_name: string;
+    bank_name: string;
+    account_number: string;
+    merchant_holder_name: string;
+    merchant_name: string;
+    merchant_number: string;
+    sort_code?: string;
+    iban?: string;
+    swift_bic?: string;
+    is_active: boolean;
+    is_verified: boolean;
+    verified_at?: Date;
+  };
+
+  @ApiPropertyOptional({ type: [Object] })
+  opening_hours?: {
+    day_of_week: number;
+    opens_at?: string;
+    closes_at?: string;
+    is_closed?: boolean;
+  }[];
+
   static fromEntity(business: Business): BusinessResponseDto {
     const coordinates = business.location?.coordinates;
     const lng = Array.isArray(coordinates) ? Number(coordinates[0]) : undefined;
@@ -206,6 +230,29 @@ export class BusinessResponseDto {
       created_at: business.created_at,
       updated_at: business.updated_at,
       deleted_at: business.deleted_at,
+      bank_account: business.bank_account
+        ? {
+          account_holder_name: business.bank_account.account_holder_name,
+          bank_name: business.bank_account.bank_name,
+          account_number: business.bank_account.account_number,
+          merchant_holder_name: business.bank_account.merchant_holder_name,
+          merchant_name: business.bank_account.merchant_name,
+          merchant_number: business.bank_account.merchant_number,
+          sort_code: business.bank_account.sort_code,
+          iban: business.bank_account.iban,
+          swift_bic: business.bank_account.swift_bic,
+          is_active: business.bank_account.is_active,
+          is_verified: business.bank_account.is_verified,
+          verified_at: business.bank_account.verified_at,
+        }
+        : undefined,
+
+      opening_hours: business.opening_hours?.map(hour => ({
+        day_of_week: hour.day_of_week,
+        opens_at: hour.opens_at,
+        closes_at: hour.closes_at,
+        is_closed: hour.is_closed,
+      })),
     };
   }
 }

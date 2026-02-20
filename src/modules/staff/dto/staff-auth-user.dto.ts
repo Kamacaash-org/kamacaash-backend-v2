@@ -24,7 +24,7 @@ export class StaffAuthUserDto {
 
     @ApiProperty()
     @IsUUID()
-    business_id: string;
+    business_id?: string | null;
 
 
     static toAuthUser(staff: StaffUser): StaffAuthUserDto {

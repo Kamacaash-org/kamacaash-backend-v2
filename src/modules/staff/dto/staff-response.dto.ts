@@ -45,7 +45,7 @@ export class StaffResponseDto {
 
     @ApiProperty()
     @IsUUID()
-    business_id: string;
+    business_id?: string | null;
 
     @ApiProperty()
     is_admin_approved: boolean;
