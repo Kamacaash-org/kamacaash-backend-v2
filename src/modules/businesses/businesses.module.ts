@@ -9,9 +9,11 @@ import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { BusinessContract } from './entities/business-contract.entity';
 import { Country } from '../countries/entities/country.entity';
 import { StaffUser } from '../staff/entities/staff-user.entity';
+import { S3Module } from '../../common/s3.module';
 
 @Module({
     imports: [
+        S3Module,
         TypeOrmModule.forFeature([
             Business,
             BusinessOpeningHours,

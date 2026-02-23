@@ -7,12 +7,19 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
+import { S3UploadService } from '../../common/services/s3-upload.service';
+
+type CategoryUploadFiles = {
+    icon_url?: Express.Multer.File[];
+    image_url?: Express.Multer.File[];
+};
 
 @Injectable()
 export class CategoriesService {
     constructor(
         @InjectRepository(BusinessCategory)
         private categoriesRepository: TreeRepository<BusinessCategory>,
+        private readonly s3UploadService: S3UploadService,
     ) { }
 
     private async getCategoryByIdOrThrow(id: string): Promise<BusinessCategory> {
@@ -52,13 +59,17 @@ export class CategoriesService {
     async create(
         createCategoryDto: CreateCategoryDto,
         currentUser: any,
+        files?: CategoryUploadFiles,
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
 
         const countryCodeFromToken = currentUser.country_code;
         const created_by = currentUser.id;
+        const fileUpdates = await this.buildCategoryFileUpdates(files);
+        const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
 
         const category: BusinessCategory = this.categoriesRepository.create({
             ...createCategoryDto,
+            ...uploadedFileFields,
             country_code: countryCodeFromToken,
             created_by,
         } as DeepPartial<BusinessCategory>);
@@ -80,17 +91,21 @@ export class CategoriesService {
         id: string,
         updateCategoryDto: UpdateCategoryDto,
         currentUser: any,
+        files?: CategoryUploadFiles,
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
 
         const updated_by = currentUser.id;
         const countryCodeFromToken = currentUser.country_code;
 
         const category = await this.getCategoryByIdOrThrow(id);
+        const fileUpdates = await this.buildCategoryFileUpdates(files, category);
+        const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
 
         const updated: BusinessCategory = this.categoriesRepository.merge(
             category,
             {
                 ...updateCategoryDto,
+                ...uploadedFileFields,
                 country_code: countryCodeFromToken,
                 updated_by,
             },
@@ -103,6 +118,9 @@ export class CategoriesService {
         }
 
         const saved = await this.categoriesRepository.save(updated);
+        if (oldUrlsToDelete.length) {
+            await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
+        }
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.CATEGORY.UPDATED,
@@ -131,5 +149,35 @@ export class CategoriesService {
         await this.categoriesRepository.save(category);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.CATEGORY.DELETED, { id });
+    }
+
+    private async buildCategoryFileUpdates(
+        files?: CategoryUploadFiles,
+        existingCategory?: BusinessCategory,
+    ): Promise<{
+        icon_url?: string;
+        image_url?: string;
+        oldUrlsToDelete: string[];
+    }> {
+        const oldUrlsToDelete: string[] = [];
+        const updates: {
+            icon_url?: string;
+            image_url?: string;
+            oldUrlsToDelete: string[];
+        } = { oldUrlsToDelete };
+
+        const icon = files?.icon_url?.[0];
+        if (icon) {
+            updates.icon_url = await this.s3UploadService.uploadFile(icon, 'categories/icons');
+            if (existingCategory?.icon_url) oldUrlsToDelete.push(existingCategory.icon_url);
+        }
+
+        const image = files?.image_url?.[0];
+        if (image) {
+            updates.image_url = await this.s3UploadService.uploadFile(image, 'categories/images');
+            if (existingCategory?.image_url) oldUrlsToDelete.push(existingCategory.image_url);
+        }
+
+        return updates;
     }
 }

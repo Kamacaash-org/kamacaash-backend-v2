@@ -11,8 +11,29 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { sexOptions, UserRole } from '../../../common/entities/enums/all.enums';
+import { Transform } from 'class-transformer';
 
 export class CreateStaffDto {
+    private static parseJson(value: unknown): unknown {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (!trimmed) return value;
+        try {
+            return JSON.parse(trimmed);
+        } catch {
+            return value;
+        }
+    }
+
+    private static toBoolean(value: unknown): unknown {
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (normalized === 'true') return true;
+            if (normalized === 'false') return false;
+        }
+        return value;
+    }
+
     @ApiProperty({ example: 'admin@kamacaash.com' })
     @IsEmail()
     email: string;
@@ -68,17 +89,20 @@ export class CreateStaffDto {
 
     @ApiPropertyOptional({ type: [String], example: ['staff:read', 'staff:update'] })
     @IsOptional()
+    @Transform(({ value }) => CreateStaffDto.parseJson(value))
     @IsArray()
     @IsString({ each: true })
     permissions?: string[];
 
     @ApiPropertyOptional({ example: true })
     @IsOptional()
+    @Transform(({ value }) => CreateStaffDto.toBoolean(value))
     @IsBoolean()
     is_active?: boolean;
 
     @ApiPropertyOptional({ example: false })
     @IsOptional()
+    @Transform(({ value }) => CreateStaffDto.toBoolean(value))
     @IsBoolean()
     two_factor_enabled?: boolean;
 

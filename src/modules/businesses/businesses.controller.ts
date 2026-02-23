@@ -9,7 +9,10 @@ import {
     Query,
     UseGuards,
     Request,
+    UseInterceptors,
+    UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BusinessesService } from './businesses.service';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
@@ -20,6 +23,13 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { BusinessResponseDto } from './dto/business-response.dto';
 import { FindNearbyBusinessesDto } from './dto/find-nearby-businesses.dto';
 
+type BusinessUploadFiles = {
+    logo_url?: Express.Multer.File[];
+    banner_url?: Express.Multer.File[];
+    license_document_url?: Express.Multer.File[];
+    gallery_images?: Express.Multer.File[];
+};
+
 @ApiTags('businesses')
 @Controller('businesses')
 export class BusinessesController {
@@ -27,10 +37,22 @@ export class BusinessesController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(
+        FileFieldsInterceptor([
+            { name: 'logo_url', maxCount: 1 },
+            { name: 'banner_url', maxCount: 1 },
+            { name: 'license_document_url', maxCount: 1 },
+            { name: 'gallery_images', maxCount: 20 },
+        ]),
+    )
     @Post()
     @ApiOperation({ summary: 'Create business (Owner)' })
-    create(@Body() createBusinessDto: CreateBusinessDto, @Request() req): Promise<ApiResponseDto<BusinessResponseDto>> {
-        return this.businessesService.create(createBusinessDto, req.user);
+    create(
+        @Body() createBusinessDto: CreateBusinessDto,
+        @UploadedFiles() files: BusinessUploadFiles,
+        @Request() req,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.create(createBusinessDto, req.user, files);
     }
 
     @Get()
@@ -53,10 +75,23 @@ export class BusinessesController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(
+        FileFieldsInterceptor([
+            { name: 'logo_url', maxCount: 1 },
+            { name: 'banner_url', maxCount: 1 },
+            { name: 'license_document_url', maxCount: 1 },
+            { name: 'gallery_images', maxCount: 20 },
+        ]),
+    )
     @Put(':id')
     @ApiOperation({ summary: 'Update business' })
-    update(@Param('id') id: string, @Body() updateBusinessDto: UpdateBusinessDto, @Request() req): Promise<ApiResponseDto<BusinessResponseDto>> {
-        return this.businessesService.update(id, updateBusinessDto, req.user);
+    update(
+        @Param('id') id: string,
+        @Body() updateBusinessDto: UpdateBusinessDto,
+        @UploadedFiles() files: BusinessUploadFiles,
+        @Request() req,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.update(id, updateBusinessDto, req.user, files);
     }
 
     @UseGuards(JwtAuthGuard)

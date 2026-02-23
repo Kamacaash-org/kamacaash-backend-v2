@@ -10,6 +10,8 @@ import {
     Patch,
     Request,
     UseGuards,
+    UseInterceptors,
+    UploadedFiles,
 } from '@nestjs/common';
 import { StaffService } from './staff.service';
 import { CreateStaffDto } from './dto/create-staff.dto';
@@ -27,6 +29,11 @@ import {
 import { ApproveStaffDto } from './dto/approve-staff.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChangePasswordDto } from './dto/ChangePassword.dto';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+
+type StaffUploadFiles = {
+    profile_image_url?: Express.Multer.File[];
+};
 
 @ApiTags('staff')
 @Controller('staff')
@@ -48,11 +55,12 @@ export class StaffController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(FileFieldsInterceptor([{ name: 'profile_image_url', maxCount: 1 }]))
     @Post()
     @ApiOperation({ summary: 'Create staff user' })
-    create(@Body() createStaffDto: CreateStaffDto, @Request() req,
+    create(@Body() createStaffDto: CreateStaffDto, @UploadedFiles() files: StaffUploadFiles, @Request() req,
     ): Promise<ApiResponseDto<StaffResponseDto>> {
-        return this.staffService.create(createStaffDto, req.user);
+        return this.staffService.create(createStaffDto, req.user, files);
     }
 
     @Get()
@@ -70,10 +78,11 @@ export class StaffController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(FileFieldsInterceptor([{ name: 'profile_image_url', maxCount: 1 }]))
     @Put(':id')
     @ApiOperation({ summary: 'Update staff user' })
-    update(@Param('id') id: string, @Body() updateStaffDto: UpdateStaffDto, @Request() req): Promise<ApiResponseDto<StaffResponseDto>> {
-        return this.staffService.update(id, updateStaffDto, req.user);
+    update(@Param('id') id: string, @Body() updateStaffDto: UpdateStaffDto, @UploadedFiles() files: StaffUploadFiles, @Request() req): Promise<ApiResponseDto<StaffResponseDto>> {
+        return this.staffService.update(id, updateStaffDto, req.user, files);
     }
 
 

@@ -12,10 +12,22 @@ import {
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import { CreateBusinessBankAccountDto } from './BankAccount.dto';
 import { CreateBusinessOpeningHourDto } from './OpeningHours.dto';
 
 export class CreateBusinessDto {
+  private static parseJson(value: unknown): unknown {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
@@ -45,12 +57,14 @@ export class CreateBusinessDto {
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
   @IsUUID('all', { each: true })
   subcategories?: string[];
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
@@ -91,12 +105,14 @@ export class CreateBusinessDto {
   postal_code?: string;
 
   @ApiProperty()
+  @Type(() => Number)
   @IsNumber()
   @Min(-90)
   @Max(90)
   latitude: number;
 
   @ApiProperty()
+  @Type(() => Number)
   @IsNumber()
   @Min(-180)
   @Max(180)
@@ -127,6 +143,7 @@ export class CreateBusinessDto {
 
   @ApiPropertyOptional({ type: Object })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   social_links?: Record<string, string>;
 
   @ApiPropertyOptional()
@@ -141,6 +158,7 @@ export class CreateBusinessDto {
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
   @IsString({ each: true })
   gallery_images?: string[];
@@ -175,15 +193,18 @@ export class CreateBusinessDto {
 
   @ApiPropertyOptional({ type: Object })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   business_hours?: Record<string, any[]>;
 
   @ApiPropertyOptional({ type: [Object] })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
   holiday_hours?: any[];
 
   @ApiPropertyOptional({ type: Object })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   settings?: Record<string, any>;
 
   @ApiPropertyOptional()
@@ -193,10 +214,12 @@ export class CreateBusinessDto {
 
   @ApiPropertyOptional({ type: [CreateBusinessOpeningHourDto] })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
   opening_hours?: CreateBusinessOpeningHourDto[];
 
   @ApiPropertyOptional({ type: CreateBusinessBankAccountDto })
   @IsOptional()
+  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   bank_account?: CreateBusinessBankAccountDto;
 }

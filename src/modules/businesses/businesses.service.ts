@@ -13,6 +13,14 @@ import { StaffUser } from '../staff/entities/staff-user.entity';
 import { BusinessOpeningHours } from './entities/business-opening-hours.entity';
 import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
+import { S3UploadService } from '../../common/services/s3-upload.service';
+
+type BusinessUploadFiles = {
+    logo_url?: Express.Multer.File[];
+    banner_url?: Express.Multer.File[];
+    license_document_url?: Express.Multer.File[];
+    gallery_images?: Express.Multer.File[];
+};
 @Injectable()
 export class BusinessesService {
     constructor(
@@ -23,6 +31,7 @@ export class BusinessesService {
         @InjectRepository(StaffUser)
         private staffRepository: Repository<StaffUser>,
         private dataSource: DataSource,
+        private readonly s3UploadService: S3UploadService,
     ) { }
 
     private async getCountryOrThrow(countryCode: string): Promise<Country> {
@@ -42,16 +51,21 @@ export class BusinessesService {
     async create(
         createBusinessDto: CreateBusinessDto,
         currentUser: any,
+        files?: BusinessUploadFiles,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
 
         return await this.dataSource.transaction(async (manager) => {
+            const fileUpdates = await this.buildBusinessFileUpdates(files);
+            const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
+            const mergedDto = { ...createBusinessDto, ...uploadedFileFields };
+
             const {
                 latitude,
                 longitude,
                 opening_hours,
                 bank_account,
                 ...rest
-            } = createBusinessDto;
+            } = mergedDto;
 
             const country = await this.getCountryOrThrow(currentUser.country_code);
 
@@ -188,6 +202,7 @@ export class BusinessesService {
         id: string,
         updateBusinessDto: UpdateBusinessDto,
         currentUser: any,
+        files?: BusinessUploadFiles,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
         return await this.dataSource.transaction(async (manager) => {
             const businessRepo = manager.getRepository(Business);
@@ -209,6 +224,9 @@ export class BusinessesService {
                     `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
                 );
 
+            const fileUpdates = await this.buildBusinessFileUpdates(files, business);
+            const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
+            const mergedDto = { ...updateBusinessDto, ...uploadedFileFields };
             const {
                 latitude,
                 longitude,
@@ -216,7 +234,7 @@ export class BusinessesService {
                 bank_account,
                 opening_hours,
                 ...rest
-            } = updateBusinessDto;
+            } = mergedDto;
 
             const updateData: Partial<Business> = {
                 ...rest,
@@ -290,11 +308,71 @@ export class BusinessesService {
                     `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
                 );
 
+            if (oldUrlsToDelete.length) {
+                await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
+            }
+
             return ApiResponseDto.success(
                 DEFAULT_MESSAGES.BUSINESS.UPDATED,
                 BusinessResponseDto.fromEntity(updated),
             );
         });
+    }
+
+    private async buildBusinessFileUpdates(
+        files?: BusinessUploadFiles,
+        existingBusiness?: Business,
+    ): Promise<{
+        logo_url?: string;
+        banner_url?: string;
+        license_document_url?: string;
+        gallery_images?: string[];
+        oldUrlsToDelete: string[];
+    }> {
+        const oldUrlsToDelete: string[] = [];
+        const updates: {
+            logo_url?: string;
+            banner_url?: string;
+            license_document_url?: string;
+            gallery_images?: string[];
+            oldUrlsToDelete: string[];
+        } = { oldUrlsToDelete };
+
+        const logo = files?.logo_url?.[0];
+        if (logo) {
+            updates.logo_url = await this.s3UploadService.uploadFile(logo, 'businesses/logos');
+            if (existingBusiness?.logo_url) oldUrlsToDelete.push(existingBusiness.logo_url);
+        }
+
+        const banner = files?.banner_url?.[0];
+        if (banner) {
+            updates.banner_url = await this.s3UploadService.uploadFile(banner, 'businesses/banners');
+            if (existingBusiness?.banner_url) oldUrlsToDelete.push(existingBusiness.banner_url);
+        }
+
+        const license = files?.license_document_url?.[0];
+        if (license) {
+            updates.license_document_url = await this.s3UploadService.uploadFile(
+                license,
+                'businesses/licenses',
+            );
+            if (existingBusiness?.license_document_url) {
+                oldUrlsToDelete.push(existingBusiness.license_document_url);
+            }
+        }
+
+        const gallery = files?.gallery_images ?? [];
+        if (gallery.length) {
+            updates.gallery_images = await this.s3UploadService.uploadFiles(
+                gallery,
+                'businesses/gallery',
+            );
+            if (existingBusiness?.gallery_images?.length) {
+                oldUrlsToDelete.push(...existingBusiness.gallery_images);
+            }
+        }
+
+        return updates;
     }
 
     async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateCategoryDto } from './dto/create-category.dto';
@@ -6,6 +6,12 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+
+type CategoryUploadFiles = {
+    icon_url?: Express.Multer.File[];
+    image_url?: Express.Multer.File[];
+};
 
 @ApiTags('categories')
 @Controller('categories')
@@ -32,25 +38,39 @@ export class CategoriesController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(
+        FileFieldsInterceptor([
+            { name: 'icon_url', maxCount: 1 },
+            { name: 'image_url', maxCount: 1 },
+        ]),
+    )
     @Post()
     @ApiOperation({ summary: 'Create category (Admin)' })
     create(
         @Body() createCategoryDto: CreateCategoryDto,
+        @UploadedFiles() files: CategoryUploadFiles,
         @Request() req,
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
-        return this.categoriesService.create(createCategoryDto, req.user);
+        return this.categoriesService.create(createCategoryDto, req.user, files);
     }
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @UseInterceptors(
+        FileFieldsInterceptor([
+            { name: 'icon_url', maxCount: 1 },
+            { name: 'image_url', maxCount: 1 },
+        ]),
+    )
     @Put(':id')
     @ApiOperation({ summary: 'Update category (Admin)' })
     update(
         @Param('id') id: string,
         @Body() updateCategoryDto: UpdateCategoryDto,
+        @UploadedFiles() files: CategoryUploadFiles,
         @Request() req,
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
-        return this.categoriesService.update(id, updateCategoryDto, req.user);
+        return this.categoriesService.update(id, updateCategoryDto, req.user, files);
     }
 
     @UseGuards(JwtAuthGuard)

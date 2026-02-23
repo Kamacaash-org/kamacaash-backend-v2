@@ -18,6 +18,11 @@ import {
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffAuthUserDto } from './dto/staff-auth-user.dto';
 import { Country } from '../countries/entities/country.entity';
+import { S3UploadService } from '../../common/services/s3-upload.service';
+
+type StaffUploadFiles = {
+    profile_image_url?: Express.Multer.File[];
+};
 
 @Injectable()
 export class StaffService {
@@ -27,6 +32,7 @@ export class StaffService {
         @InjectRepository(Country)
         private countryRepository: Repository<Country>,
         private jwtService: JwtService,
+        private readonly s3UploadService: S3UploadService,
     ) { }
 
     async login(loginDto: StaffLoginDto): Promise<ApiResponseDto<StaffSessionResponseDto | StaffLogin2faRequiredResponseDto>> {
@@ -68,9 +74,15 @@ export class StaffService {
         };
     }
 
-    async create(createStaffDto: CreateStaffDto, currentUser: any): Promise<ApiResponseDto<StaffResponseDto>> {
+    async create(
+        createStaffDto: CreateStaffDto,
+        currentUser: any,
+        files?: StaffUploadFiles,
+    ): Promise<ApiResponseDto<StaffResponseDto>> {
         const countryCodeFromToken = currentUser.country_code;
         const created_by = currentUser.id;
+        const fileUpdates = await this.buildStaffFileUpdates(files);
+        const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
 
 
         const country = await this.countryRepository.findOne({
@@ -106,7 +118,7 @@ export class StaffService {
             first_name: createStaffDto.first_name,
             last_name: createStaffDto.last_name,
             full_name: `${createStaffDto.first_name} ${createStaffDto.last_name}`,
-            profile_image_url: createStaffDto.profile_image_url,
+            profile_image_url: uploadedFileFields.profile_image_url ?? createStaffDto.profile_image_url,
             sex: createStaffDto.sex,
             password_hash,
             role: createStaffDto.role,
@@ -159,7 +171,12 @@ export class StaffService {
         );
     }
 
-    async update(id: string, updateStaffDto: UpdateStaffDto, currentUser: any): Promise<ApiResponseDto<StaffResponseDto>> {
+    async update(
+        id: string,
+        updateStaffDto: UpdateStaffDto,
+        currentUser: any,
+        files?: StaffUploadFiles,
+    ): Promise<ApiResponseDto<StaffResponseDto>> {
 
         const countryCodeFromToken = currentUser.country_code;
         const updated_by = currentUser.id;
@@ -175,9 +192,12 @@ export class StaffService {
 
         const staff = await this.staffRepository.findOne({ where: { id } });
         if (!staff) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
+        const fileUpdates = await this.buildStaffFileUpdates(files, staff);
+        const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
 
         const payload: Partial<StaffUser> = {
             ...updateStaffDto,
+            ...uploadedFileFields,
             country_code: country.iso_code_3166,
             updated_by: updated_by,
         };
@@ -195,6 +215,9 @@ export class StaffService {
 
         const updated = await this.staffRepository.findOne({ where: { id } });
         if (!updated) throw new NotFoundException(`${DEFAULT_MESSAGES.STAFF.NOT_FOUND}: ${id}`);
+        if (oldUrlsToDelete.length) {
+            await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
+        }
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.STAFF.UPDATED,
@@ -313,5 +336,31 @@ export class StaffService {
     async findByEmail(email: string): Promise<StaffUser | undefined> {
         const staff = await this.staffRepository.findOne({ where: { email } });
         return staff || undefined;
+    }
+
+    private async buildStaffFileUpdates(
+        files?: StaffUploadFiles,
+        existingStaff?: StaffUser,
+    ): Promise<{
+        profile_image_url?: string;
+        oldUrlsToDelete: string[];
+    }> {
+        const oldUrlsToDelete: string[] = [];
+        const updates: { profile_image_url?: string; oldUrlsToDelete: string[] } = {
+            oldUrlsToDelete,
+        };
+
+        const profileImage = files?.profile_image_url?.[0];
+        if (profileImage) {
+            updates.profile_image_url = await this.s3UploadService.uploadFile(
+                profileImage,
+                'staff/profile-images',
+            );
+            if (existingStaff?.profile_image_url) {
+                oldUrlsToDelete.push(existingStaff.profile_image_url);
+            }
+        }
+
+        return updates;
     }
 }
