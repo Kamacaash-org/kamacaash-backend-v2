@@ -150,7 +150,7 @@ export class BusinessesService {
     }
 
     async findOne(id: string): Promise<ApiResponseDto<BusinessResponseDto>> {
-        const business = await this.businessesRepository.findOne({ where: { id, is_archived: false } });
+        const business = await this.businessesRepository.findOne({ where: { id, is_archived: false }, relations: ['bank_account', 'opening_hours'] });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
