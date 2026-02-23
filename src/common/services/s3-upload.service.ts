@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
+import { UploadedFile } from '../types/uploaded-file.type';
 
 @Injectable()
 export class S3UploadService {
@@ -50,7 +51,7 @@ export class S3UploadService {
     });
   }
 
-  async uploadFile(file: Express.Multer.File, folder: string): Promise<string> {
+  async uploadFile(file: UploadedFile, folder: string): Promise<string> {
     if (!file || !file.buffer) {
       throw new InternalServerErrorException('Invalid upload file payload');
     }
@@ -75,7 +76,7 @@ export class S3UploadService {
   }
 
   async uploadFiles(
-    files: Express.Multer.File[],
+    files: UploadedFile[],
     folder: string,
   ): Promise<string[]> {
     if (!files?.length) return [];

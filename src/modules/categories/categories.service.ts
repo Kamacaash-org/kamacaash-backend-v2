@@ -8,10 +8,11 @@ import { CategoryResponseDto } from './dto/category-response.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { S3UploadService } from '../../common/services/s3-upload.service';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type CategoryUploadFiles = {
-    icon_url?: Express.Multer.File[];
-    image_url?: Express.Multer.File[];
+    icon_url?: UploadedFile[];
+    image_url?: UploadedFile[];
 };
 
 @Injectable()

@@ -7,10 +7,11 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type CategoryUploadFiles = {
-    icon_url?: Express.Multer.File[];
-    image_url?: Express.Multer.File[];
+    icon_url?: UploadedFile[];
+    image_url?: UploadedFile[];
 };
 
 @ApiTags('categories')

@@ -22,12 +22,13 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { BusinessResponseDto } from './dto/business-response.dto';
 import { FindNearbyBusinessesDto } from './dto/find-nearby-businesses.dto';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type BusinessUploadFiles = {
-    logo_url?: Express.Multer.File[];
-    banner_url?: Express.Multer.File[];
-    license_document_url?: Express.Multer.File[];
-    gallery_images?: Express.Multer.File[];
+    logo_url?: UploadedFile[];
+    banner_url?: UploadedFile[];
+    license_document_url?: UploadedFile[];
+    gallery_images?: UploadedFile[];
 };
 
 @ApiTags('businesses')

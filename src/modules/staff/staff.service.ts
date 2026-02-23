@@ -19,9 +19,10 @@ import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffAuthUserDto } from './dto/staff-auth-user.dto';
 import { Country } from '../countries/entities/country.entity';
 import { S3UploadService } from '../../common/services/s3-upload.service';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type StaffUploadFiles = {
-    profile_image_url?: Express.Multer.File[];
+    profile_image_url?: UploadedFile[];
 };
 
 @Injectable()

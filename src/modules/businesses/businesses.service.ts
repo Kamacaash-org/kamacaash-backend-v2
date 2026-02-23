@@ -14,12 +14,13 @@ import { BusinessOpeningHours } from './entities/business-opening-hours.entity';
 import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
 import { S3UploadService } from '../../common/services/s3-upload.service';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type BusinessUploadFiles = {
-    logo_url?: Express.Multer.File[];
-    banner_url?: Express.Multer.File[];
-    license_document_url?: Express.Multer.File[];
-    gallery_images?: Express.Multer.File[];
+    logo_url?: UploadedFile[];
+    banner_url?: UploadedFile[];
+    license_document_url?: UploadedFile[];
+    gallery_images?: UploadedFile[];
 };
 @Injectable()
 export class BusinessesService {

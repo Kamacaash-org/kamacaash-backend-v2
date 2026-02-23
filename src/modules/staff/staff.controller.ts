@@ -30,9 +30,10 @@ import { ApproveStaffDto } from './dto/approve-staff.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChangePasswordDto } from './dto/ChangePassword.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
 
 type StaffUploadFiles = {
-    profile_image_url?: Express.Multer.File[];
+    profile_image_url?: UploadedFile[];
 };
 
 @ApiTags('staff')
