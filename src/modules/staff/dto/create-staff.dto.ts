@@ -64,9 +64,9 @@ export class CreateStaffDto {
     @Length(1, 100)
     last_name: string;
 
-    @ApiProperty()
-    @IsUUID()
-    business_id: string;
+    // @ApiProperty()
+    // @IsUUID()
+    // business_id: string;
 
     @ApiPropertyOptional({ example: 'https://cdn.example.com/avatar.jpg' })
     @IsOptional()
