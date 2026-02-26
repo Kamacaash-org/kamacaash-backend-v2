@@ -292,7 +292,7 @@ export class StaffService {
         staff.password_hash = newPasswordHash;
         staff.password_modified_by = staffId;
         staff.password_modified_at = new Date();
-
+        staff.must_change_password = false;
         await this.staffRepository.save(staff);
 
         return ApiResponseDto.success(
