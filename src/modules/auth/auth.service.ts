@@ -3,12 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { AppUser } from '../users/entities/app-user.entity';
-import { UserStatus } from '../../common/entities/enums/all.enums';
+import { UserRole, UserStatus } from '../../common/entities/enums/all.enums';
 import { UserRegisterDto, UserVerifyDto } from './dto/user-auth.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { Country } from '../countries/entities/country.entity';
 import { AuthOtpRequestResponseDto, AuthProfileResponseDto, AuthVerifyResponseDto } from './dto/auth-response.dto';
+import { use } from 'passport';
 
 @Injectable()
 export class AuthService {
@@ -77,7 +78,7 @@ export class AuthService {
             user.status = UserStatus.ACTIVE;
         }
 
-        const payload = { sub: user.id, role: 'CUSTOMER' };
+        const payload = { sub: user.id, role: UserRole.USER };
         const timezone = await this.resolveTimezoneByCountryCode(user.phone_country_code);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.OTP_VERIFIED, {

@@ -10,6 +10,8 @@ import { StaffModule } from './modules/staff/staff.module';
 import { CountriesModule } from './modules/countries/countries.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
+import { BusinessContractModule } from './modules/businesses/BusinessContract.module';
+
 import { OffersModule } from './modules/offers/offers.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -39,6 +41,7 @@ import { AdminModule } from './modules/admin/admin.module';
     CountriesModule,
     CategoriesModule,
     BusinessesModule,
+    BusinessContractModule,
     OffersModule,
     OrdersModule,
     PaymentsModule,

@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppUser } from '../../users/entities/app-user.entity';
 import { StaffUser } from '../../staff/entities/staff-user.entity';
+import { UserRole } from 'src/common/entities/enums/all.enums';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -25,7 +26,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     async validate(payload: any) {
         let user;
-        if (payload.role === 'CUSTOMER') {
+        if (payload.role === UserRole.USER) {
             user = await this.usersRepository.findOne({ where: { id: payload.sub } });
         } else {
             user = await this.staffRepository.findOne({ where: { id: payload.sub } });

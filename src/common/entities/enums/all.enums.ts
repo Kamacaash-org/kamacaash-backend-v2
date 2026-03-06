@@ -3,8 +3,7 @@ export enum UserRole {
     ADMIN = 'ADMIN',
     BUSINESS_OWNER = 'BUSINESS_OWNER',
     STAFF = 'STAFF',
-    CUSTOMER = 'CUSTOMER',
-    MODERATOR = 'MODERATOR',
+    USER = 'USER',
 }
 
 export enum UserStatus {

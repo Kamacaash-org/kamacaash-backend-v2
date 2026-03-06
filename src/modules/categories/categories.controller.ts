@@ -25,6 +25,13 @@ export class CategoriesController {
         return this.categoriesService.findAll();
     }
 
+    @Get('ddl')
+    @ApiOperation({ summary: 'List all categories (DDL)' })
+    getCategoriesDdl(): Promise<ApiResponseDto<any>> {
+        return this.categoriesService.getCategoriesDdl();
+    }
+
+
     @Get('slug/:slug')
     @ApiOperation({ summary: 'Get category by slug' })
     findBySlug(@Param('slug') slug: string): Promise<ApiResponseDto<CategoryResponseDto>> {

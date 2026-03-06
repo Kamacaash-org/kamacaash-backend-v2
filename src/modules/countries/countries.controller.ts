@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Body, Put, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { CountriesService } from './countries.service';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CreateCountryDto } from './dto/create-country.dto';
 import { UpdateCountryDto } from './dto/update-country.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { CountryResponseDto } from './dto/country-response.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('countries')
 @Controller('countries')
@@ -23,24 +24,30 @@ export class CountriesController {
         return this.countriesService.findOne(code);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Post()
     @ApiOperation({ summary: 'Create country (Admin)' })
-    create(@Body() createCountryDto: CreateCountryDto): Promise<ApiResponseDto<CountryResponseDto>> {
-        return this.countriesService.create(createCountryDto);
+    create(@Body() createCountryDto: CreateCountryDto, @Request() req,): Promise<ApiResponseDto<CountryResponseDto>> {
+        return this.countriesService.create(createCountryDto, req.user.id);
     }
 
-    @Put(':code')
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Put(':id')
     @ApiOperation({ summary: 'Update country (Admin)' })
     update(
-      @Param('code') code: string,
-      @Body() updateCountryDto: UpdateCountryDto,
+        @Param('id') id: string,
+        @Body() updateCountryDto: UpdateCountryDto,
+        @Request() req,
     ): Promise<ApiResponseDto<CountryResponseDto>> {
-        return this.countriesService.update(code, updateCountryDto);
+        return this.countriesService.update(id, updateCountryDto);
     }
 
-    @Delete(':code')
+    @Delete(':id')
     @ApiOperation({ summary: 'Delete country (Admin)' })
-    remove(@Param('code') code: string): Promise<ApiResponseDto<{ iso_code_3166: string }>> {
-        return this.countriesService.remove(code);
+    remove(@Param('id') id: string): Promise<ApiResponseDto<{ iso_code_3166: string }>> {
+        return this.countriesService.remove(id);
     }
 }

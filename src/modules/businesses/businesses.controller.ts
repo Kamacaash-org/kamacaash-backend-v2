@@ -11,6 +11,7 @@ import {
     Request,
     UseInterceptors,
     UploadedFiles,
+    Patch,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { BusinessesService } from './businesses.service';
@@ -23,6 +24,8 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { BusinessResponseDto } from './dto/business-response.dto';
 import { FindNearbyBusinessesDto } from './dto/find-nearby-businesses.dto';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { ToggleBusinessStatusDto } from './dto/toggle-business-status.dto';
+import { BusinessVerificationStatus } from 'src/common/entities/enums/all.enums';
 
 type BusinessUploadFiles = {
     logo_url?: UploadedFile[];
@@ -101,5 +104,48 @@ export class BusinessesController {
     @ApiOperation({ summary: 'Soft delete business' })
     remove(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<{ id: string }>> {
         return this.businessesService.remove(id, req.user);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Post(':id/toggleStatus')
+    @ApiOperation({ summary: 'Toggle business active status' })
+    toggleStatus(
+        @Param('id') id: string,
+        @Body() dto: ToggleBusinessStatusDto,
+        @Request() req,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
+        return this.businessesService.toggleStatus(id, dto, req.user);
+    }
+
+    @Get('verification/:status')
+    getBusinessesByVerificationStatus(
+        @Param('status') status: BusinessVerificationStatus,
+    ) {
+        return this.businessesService.getBusinessesByVerificationStatus(status);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Patch(':id/approve')
+    @ApiOperation({ summary: 'Approve a business' })
+    approveBusiness(
+        @Param('id') id: string,
+        @Request() req,
+    ): Promise<ApiResponseDto<any>> {
+        // req.user contains the logged-in admin user
+        return this.businessesService.approveBusiness(id, req.user.id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Patch(':id/reject')
+    @ApiOperation({ summary: 'Reject a business' })
+    rejectBusiness(
+        @Param('id') id: string,
+        @Body('reason') reason: string,
+        @Request() req,
+    ): Promise<ApiResponseDto<any>> {
+        return this.businessesService.rejectBusiness(id, req.user.id, reason);
     }
 }

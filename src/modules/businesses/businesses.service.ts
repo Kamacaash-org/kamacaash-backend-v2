@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Business } from './entities/business.entity';
@@ -15,6 +15,8 @@ import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { BusinessVerificationStatus } from 'src/common/entities/enums/all.enums';
+import { BusinessVerificationListDto } from './dto/business-verification.dto';
 
 type BusinessUploadFiles = {
     logo_url?: UploadedFile[];
@@ -59,7 +61,13 @@ export class BusinessesService {
             const fileUpdates = await this.buildBusinessFileUpdates(files);
             const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
             const mergedDto = { ...createBusinessDto, ...uploadedFileFields };
+            const verificationStatus = uploadedFileFields.license_document_url
+                ? BusinessVerificationStatus.PENDING
+                : BusinessVerificationStatus.UNVERIFIED;
 
+            const verification_submitted_at = uploadedFileFields.license_document_url
+                ? new Date()
+                : undefined;
             const {
                 latitude,
                 longitude,
@@ -72,6 +80,8 @@ export class BusinessesService {
 
             const business = manager.create(Business, {
                 ...rest,
+                verification_status: verificationStatus,
+                verification_submitted_at,
                 country_code: country.iso_code_3166,
                 currency_code: country.currency_code,
                 timezone: country.default_timezone,
@@ -228,6 +238,14 @@ export class BusinessesService {
             const fileUpdates = await this.buildBusinessFileUpdates(files, business);
             const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
             const mergedDto = { ...updateBusinessDto, ...uploadedFileFields };
+            // If license uploaded -> move to pending verification
+            const newLicenseUrl = uploadedFileFields.license_document_url;
+
+            if ((newLicenseUrl && newLicenseUrl !== business.license_document_url) || (business.license_document_url && business
+                .verification_status === BusinessVerificationStatus.UNVERIFIED)) {
+                business.verification_status = BusinessVerificationStatus.PENDING;
+                business.verification_submitted_at = new Date();
+            }
             const {
                 latitude,
                 longitude,
@@ -236,7 +254,7 @@ export class BusinessesService {
                 opening_hours,
                 ...rest
             } = mergedDto;
-
+            console.log('business:', business);
             const updateData: Partial<Business> = {
                 ...rest,
                 updated_by: currentUser.id,
@@ -395,5 +413,134 @@ export class BusinessesService {
 
         await this.businessesRepository.save(business);
         return ApiResponseDto.success(DEFAULT_MESSAGES.BUSINESS.DELETED, { id });
+    }
+
+    async toggleStatus(
+        id: string,
+        dto: { is_active: boolean },
+        currentUser: any,
+    ): Promise<ApiResponseDto<BusinessResponseDto>> {
+
+        const business = await this.businessesRepository.findOne({
+            where: {
+                id,
+                country_code: currentUser.country_code,
+                is_archived: false,
+            },
+        });
+
+        if (!business) {
+            throw new NotFoundException(
+                `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
+            );
+        }
+
+        business.is_active = dto.is_active;
+        business.updated_by = currentUser.id;
+        business.updated_at = new Date();
+
+        const updated = await this.businessesRepository.save(business);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.UPDATED,
+            BusinessResponseDto.fromEntity(updated),
+        );
+    }
+
+
+    async getBusinessesByVerificationStatus(
+        status: BusinessVerificationStatus,
+    ): Promise<ApiResponseDto<BusinessVerificationListDto[]>> {
+
+        const businesses = await this.businessesRepository
+            .createQueryBuilder('business')
+            .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.primary_staff', 'staff')
+            .leftJoinAndSelect('business.verified_by_admin', 'verifier')
+            .leftJoinAndSelect('business.rejecter', 'rejecter')
+            .where('business.verification_status = :status', { status })
+            .andWhere('business.is_archived = false')
+            .select([
+                'business.id',
+                'business.display_name',
+                'business.owner_name',
+                'business.city',
+                'business.phone_e164',
+                'business.logo_url',
+                'business.license_document_url',
+                'business.verification_status',
+                'business.verification_reviewed_at',
+                'business.verification_rejection_reason',
+                'business.verification_submitted_at',
+                'business.created_at',
+                'category.name',
+                'staff.first_name',
+                'staff.last_name',
+                'staff.phone_e164',
+                'verifier.first_name',
+                'verifier.last_name',
+                'rejecter.first_name',
+                'rejecter.last_name',
+            ])
+            .orderBy('business.created_at', 'DESC')
+            .getMany();
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.LIST_FETCHED,
+            businesses.map((b) => BusinessVerificationListDto.fromEntity(b)),
+        );
+    }
+
+
+    async approveBusiness(businessId: string, adminId: string): Promise<ApiResponseDto<any>> {
+        const business = await this.businessesRepository.findOne({
+            where: { id: businessId, is_archived: false },
+            relations: ['verified_by_admin'],
+        });
+
+        if (!business) throw new NotFoundException('Business not found');
+
+        if (business.verification_status === BusinessVerificationStatus.VERIFIED) {
+            throw new BadRequestException('Business is already approved');
+        }
+
+        business.verification_status = BusinessVerificationStatus.VERIFIED;
+        business.verified_by_admin_id = adminId;
+        business.verification_reviewed_at = new Date();
+
+        await this.businessesRepository.save(business);
+
+        return ApiResponseDto.success('Business approved successfully', {
+            id: business.id,
+            verification_status: business.verification_status,
+            verification_reviewed_at: business.verification_reviewed_at,
+        });
+    }
+
+    async rejectBusiness(businessId: string, adminId: string, reason: string): Promise<ApiResponseDto<any>> {
+        const business = await this.businessesRepository.findOne({
+            where: { id: businessId, is_archived: false },
+            relations: ['rejecter'],
+        });
+
+        if (!business) throw new NotFoundException('Business not found');
+
+        if (business.verification_status === BusinessVerificationStatus.REJECTED) {
+            throw new BadRequestException('Business is already rejected');
+        }
+
+        business.verification_status = BusinessVerificationStatus.REJECTED;
+        business.rejected_by_admin_id = adminId;
+        business.verification_rejection_reason = reason;
+        business.verification_reviewed_at = new Date();
+
+        await this.businessesRepository.save(business);
+
+        return ApiResponseDto.success('Business rejected successfully', {
+            id: business.id,
+            verification_status: business.verification_status,
+            verification_rejection_reason: business.verification_rejection_reason,
+            verification_reviewed_at: business.verification_reviewed_at,
+        });
     }
 }

@@ -1,7 +1,8 @@
-import { Entity, Column, Unique, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Business } from './business.entity';
 import { PayoutSchedule } from '../../../common/entities/enums/all.enums';
+import { StaffUser } from '../../staff/entities/staff-user.entity';
 
 @Entity('business_contracts')
 export class BusinessContract extends BaseEntity {
@@ -46,7 +47,7 @@ export class BusinessContract extends BaseEntity {
     effective_from: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    effective_to: Date;
+    effective_to: Date | null;
 
     @Column({ default: true })
     auto_renew: boolean;
@@ -59,4 +60,11 @@ export class BusinessContract extends BaseEntity {
 
     @Column({ type: 'text', nullable: true })
     termination_reason: string;
+
+    @Column({ type: 'uuid', nullable: true })
+    uploader_id: string | null;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'uploader_id' })
+    uploader: StaffUser;
 }

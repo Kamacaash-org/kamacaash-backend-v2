@@ -1,5 +1,6 @@
-import { Entity, Column, Index } from 'typeorm';
+import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
+import { StaffUser } from 'src/modules/staff/entities/staff-user.entity';
 
 @Entity('countries')
 export class Country extends BaseEntity {
@@ -44,6 +45,22 @@ export class Country extends BaseEntity {
 
     @Column({ length: 50, nullable: true })
     postal_code_format: string;
+
+    @Column({ type: 'uuid', nullable: true })
+    created_by?: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'created_by' })
+    creator: StaffUser;
+
+
+    @Column({ type: 'uuid', nullable: true })
+    updated_by: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'updated_by' })
+    updater: StaffUser;
+
 
     @Column({ default: true })
     is_active: boolean;

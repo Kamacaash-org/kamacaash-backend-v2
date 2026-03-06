@@ -124,8 +124,6 @@ export class BusinessResponseDto {
   @ApiPropertyOptional()
   featured_until?: Date;
 
-  @ApiPropertyOptional()
-  rejection_reason?: string;
 
   @ApiProperty({ type: Object })
   business_hours: Record<string, any[]>;
@@ -221,7 +219,6 @@ export class BusinessResponseDto {
       is_archived: business.is_archived,
       is_featured: business.is_featured,
       featured_until: business.featured_until,
-      rejection_reason: business.rejection_reason,
       business_hours: business.business_hours,
       holiday_hours: business.holiday_hours,
       settings: business.settings,

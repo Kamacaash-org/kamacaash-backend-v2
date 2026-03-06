@@ -56,6 +56,7 @@ export const DEFAULT_MESSAGES = {
     UPDATED: 'Category updated successfully',
     DELETED: 'Category deleted successfully',
     NOT_FOUND: 'Category not found',
+    DDL_CATEGORIES_FETCHED: 'DDL categories fetched successfully',
   },
   OFFER: {
     LIST_FETCHED: 'Offers fetched successfully',

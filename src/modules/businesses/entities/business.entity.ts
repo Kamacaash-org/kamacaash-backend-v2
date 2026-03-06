@@ -141,6 +141,40 @@ export class Business extends BaseSoftDeleteEntity {
     })
     verification_status: BusinessVerificationStatus;
 
+    @Column({ type: 'timestamptz', nullable: true })
+    verification_submitted_at?: Date;
+    @Column({
+        type: 'timestamp',
+        nullable: true,
+    })
+    @Column({ type: 'timestamptz', nullable: true })
+    verification_reviewed_at?: Date;
+
+    @Column({
+        type: 'text',
+        nullable: true,
+    })
+    @Column({ type: 'text', nullable: true })
+    verification_rejection_reason?: string;
+
+
+    @Column({ type: "uuid", nullable: true })
+    rejected_by_admin_id?: string;
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'rejected_by_admin_id' })
+    rejecter?: StaffUser;
+
+    @Column({
+        type: 'uuid',
+        nullable: true,
+    })
+    verified_by_admin_id?: string;
+
+    @ManyToOne(() => StaffUser)
+    @JoinColumn({ name: 'verified_by_admin_id' })
+    verified_by_admin: StaffUser;
+
+
     @Column({
         type: 'enum',
         enum: BusinessStatus,
@@ -192,9 +226,6 @@ export class Business extends BaseSoftDeleteEntity {
 
     @Column({ type: 'timestamptz', nullable: true })
     featured_until: Date;
-
-    @Column({ type: 'text', nullable: true })
-    rejection_reason: string;
 
     // Statistics
     @Column({ type: 'int', default: 0 })

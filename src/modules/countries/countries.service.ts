@@ -37,7 +37,7 @@ export class CountriesService {
     );
   }
 
-  async create(createCountryDto: CreateCountryDto): Promise<ApiResponseDto<CountryResponseDto>> {
+  async create(createCountryDto: CreateCountryDto, createdBy: string): Promise<ApiResponseDto<CountryResponseDto>> {
     const isoCode = createCountryDto.iso_code_3166.toUpperCase();
     const iso3Code = createCountryDto.iso_code_3166_3.toUpperCase();
 
@@ -51,6 +51,7 @@ export class CountriesService {
       iso_code_3166: isoCode,
       iso_code_3166_3: iso3Code,
       currency_code: createCountryDto.currency_code.toUpperCase(),
+      created_by: createdBy,
     });
 
     const created = await this.countriesRepository.save(country);
@@ -61,12 +62,10 @@ export class CountriesService {
     );
   }
 
-  async update(code: string, updateCountryDto: UpdateCountryDto): Promise<ApiResponseDto<CountryResponseDto>> {
-    const normalizedCode = code.toUpperCase();
-
-    const existing = await this.countriesRepository.findOne({ where: { iso_code_3166: normalizedCode } });
+  async update(id: string, updateCountryDto: UpdateCountryDto, updatedBy?: string): Promise<ApiResponseDto<CountryResponseDto>> {
+    const existing = await this.countriesRepository.findOne({ where: { id } });
     if (!existing) {
-      throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${normalizedCode}`);
+      throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${id}`);
     }
 
     const payload: UpdateCountryDto = {
@@ -75,11 +74,11 @@ export class CountriesService {
       currency_code: updateCountryDto.currency_code?.toUpperCase(),
     };
 
-    await this.countriesRepository.update({ iso_code_3166: normalizedCode }, payload);
+    await this.countriesRepository.update({ id }, { ...payload, updated_by: updatedBy });
 
-    const updated = await this.countriesRepository.findOne({ where: { iso_code_3166: normalizedCode } });
+    const updated = await this.countriesRepository.findOne({ where: { id } });
     if (!updated) {
-      throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${normalizedCode}`);
+      throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${id}`);
     }
 
     return ApiResponseDto.success(
@@ -88,11 +87,15 @@ export class CountriesService {
     );
   }
 
-  async remove(code: string): Promise<ApiResponseDto<{ iso_code_3166: string }>> {
-    const normalizedCode = code.toUpperCase();
-
-    const existing = await this.countriesRepository.findOne({ where: { iso_code_3166: normalizedCode } });
+  async remove(id: string): Promise<ApiResponseDto<{ iso_code_3166: string }>> {
+    const existing = await this.countriesRepository.findOne({ where: { id } });
     if (!existing) {
+      throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${id}`);
+    }
+    const normalizedCode = existing.iso_code_3166.toUpperCase();
+
+    const existingByCode = await this.countriesRepository.findOne({ where: { iso_code_3166: normalizedCode } });
+    if (!existingByCode) {
       throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${normalizedCode}`);
     }
     await this.countriesRepository.update({ iso_code_3166: normalizedCode }, { is_archived: true });

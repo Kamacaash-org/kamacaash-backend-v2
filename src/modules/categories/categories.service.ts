@@ -9,6 +9,7 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { getDdlOptions } from 'src/utils/ddl.util';
 
 type CategoryUploadFiles = {
     icon_url?: UploadedFile[];
@@ -38,6 +39,27 @@ export class CategoriesService {
             categories.map((category) => CategoryResponseDto.fromEntity(category, true)),
         );
     }
+
+    async getCategoriesDdl() {
+        const ddl = await getDdlOptions(this.categoriesRepository, {
+            where: { is_archived: false, is_active: true },
+            select: {
+                id: true,
+                name: true,
+                slug: true,
+            },
+            labelKey: 'name',
+            valueKey: 'id',
+            metaKeys: ['slug'],
+            order: { sort_order: 'ASC' },
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.CATEGORY.DDL_CATEGORIES_FETCHED,
+            ddl,
+        );
+    }
+
 
     async findOne(id: string): Promise<ApiResponseDto<CategoryResponseDto>> {
         const category = await this.getCategoryByIdOrThrow(id);
