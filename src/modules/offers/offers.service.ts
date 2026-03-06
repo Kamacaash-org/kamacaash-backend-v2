@@ -10,39 +10,87 @@ import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { OfferResponseDto } from './dto/offer-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { Business } from '../businesses/entities/business.entity';
+import { S3UploadService } from '../../common/services/s3-upload.service';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { OfferPickupWindow } from './entities/offer-pickup-window.entity';
+
+type OfferUploadFiles = {
+    main_image_url?: UploadedFile[];
+    gallery_images?: UploadedFile[];
+};
 
 @Injectable()
 export class OffersService {
     constructor(
         @InjectRepository(Offer)
         private offersRepository: Repository<Offer>,
+        @InjectRepository(OfferPickupWindow)
+        private offerPickupWindowsRepository: Repository<OfferPickupWindow>,
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
+        private readonly s3UploadService: S3UploadService,
     ) { }
 
-    async create(createOfferDto: CreateOfferDto, staffId?: string): Promise<ApiResponseDto<OfferResponseDto>> {
+    async create(
+        createOfferDto: CreateOfferDto,
+        currentUser: any,
+        files?: OfferUploadFiles,
+    ): Promise<ApiResponseDto<OfferResponseDto>> {
         const business = await this.businessesRepository.findOne({ where: { id: createOfferDto.business_id } });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${createOfferDto.business_id}`);
 
-        const pickupStart = new Date(createOfferDto.pickup_start);
-        const pickupEnd = new Date(createOfferDto.pickup_end);
+        const parsedPickupWindows = this.parsePickupWindows(createOfferDto.pickup_windows);
+        const hasPickupWindows = parsedPickupWindows.length > 0;
+
+        if (!hasPickupWindows && (!createOfferDto.pickup_start || !createOfferDto.pickup_end)) {
+            throw new BadRequestException('Provide pickup_start/pickup_end or pickup_windows');
+        }
+
+        const pickupStart = hasPickupWindows
+            ? parsedPickupWindows.reduce((min, w) => (w.starts_at < min ? w.starts_at : min), parsedPickupWindows[0].starts_at)
+            : new Date(createOfferDto.pickup_start!);
+        const pickupEnd = hasPickupWindows
+            ? parsedPickupWindows.reduce((max, w) => (w.ends_at > max ? w.ends_at : max), parsedPickupWindows[0].ends_at)
+            : new Date(createOfferDto.pickup_end!);
+
         if (pickupEnd <= pickupStart) {
             throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
         }
 
+        const fileUpdates = await this.buildOfferFileUpdates(files);
+        const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
+
         const offer = this.offersRepository.create({
             ...createOfferDto,
+            ...uploadedFileFields,
             currency_code: business.currency_code,
             pickup_start: pickupStart,
             pickup_end: pickupEnd,
-            created_by_staff_id: staffId,
+            created_by_staff_id: currentUser?.id,
             quantity_remaining: createOfferDto.quantity_total,
             slug: this.generateSlug(createOfferDto.title),
             status: OfferStatus.PUBLISHED,
         });
 
         const created = await this.offersRepository.save(offer);
-        const withBusiness = await this.offersRepository.findOne({ where: { id: created.id }, relations: ['business'] });
+
+        if (hasPickupWindows) {
+            await this.offerPickupWindowsRepository.save(
+                parsedPickupWindows.map((w) =>
+                    this.offerPickupWindowsRepository.create({
+                        offer_id: created.id,
+                        starts_at: w.starts_at,
+                        ends_at: w.ends_at,
+                        max_pickups_per_window: w.max_pickups_per_window,
+                    }),
+                ),
+            );
+        }
+
+        const withBusiness = await this.offersRepository.findOne({
+            where: { id: created.id },
+            relations: ['business', 'created_by_staff', 'updater', 'archiver', 'pickup_windows'],
+        });
         if (!withBusiness) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${created.id}`);
 
         return ApiResponseDto.success(
@@ -63,10 +111,15 @@ export class OffersService {
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
         const query = this.offersRepository
             .createQueryBuilder('offer')
-            .leftJoinAndSelect('offer.business', 'business');
+            .leftJoinAndSelect('offer.business', 'business')
+            .leftJoinAndSelect('offer.created_by_staff', 'created_by_staff')
+            .leftJoinAndSelect('offer.updater', 'updater')
+            .leftJoinAndSelect('offer.archiver', 'archiver')
+            .leftJoinAndSelect('offer.pickup_windows', 'pickup_windows')
+            .where('offer.is_archived = :isArchived', { isArchived: false });
 
         if (search) {
-            query.where('offer.title ILIKE :search OR offer.description ILIKE :search', { search: `%${search}%` });
+            query.andWhere('(offer.title ILIKE :search OR offer.description ILIKE :search)', { search: `%${search}%` });
         }
 
         if (queryParams?.business_id) {
@@ -87,7 +140,10 @@ export class OffersService {
     }
 
     async findOne(id: string): Promise<ApiResponseDto<OfferResponseDto>> {
-        const offer = await this.offersRepository.findOne({ where: { id }, relations: ['business', 'category'] });
+        const offer = await this.offersRepository.findOne({
+            where: { id, is_archived: false },
+            relations: ['business', 'category', 'created_by_staff', 'updater', 'archiver', 'pickup_windows'],
+        });
         if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
@@ -96,9 +152,20 @@ export class OffersService {
         );
     }
 
-    async update(id: string, updateOfferDto: UpdateOfferDto): Promise<ApiResponseDto<OfferResponseDto>> {
-        const offer = await this.offersRepository.findOne({ where: { id }, relations: ['business'] });
+    async update(
+        id: string,
+        updateOfferDto: UpdateOfferDto,
+        currentUser: any,
+        files?: OfferUploadFiles,
+    ): Promise<ApiResponseDto<OfferResponseDto>> {
+        const offer = await this.offersRepository.findOne({
+            where: { id, is_archived: false },
+            relations: ['business', 'pickup_windows'],
+        });
         if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
+
+        const fileUpdates = await this.buildOfferFileUpdates(files, offer);
+        const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
 
         const updatePayload: Partial<Offer> = {};
         if (updateOfferDto.business_id !== undefined) updatePayload.business_id = updateOfferDto.business_id;
@@ -125,17 +192,60 @@ export class OffersService {
             updatePayload.currency_code = offer.business?.currency_code || offer.currency_code;
         }
 
-        if (updateOfferDto.pickup_start) updatePayload.pickup_start = new Date(updateOfferDto.pickup_start);
-        if (updateOfferDto.pickup_end) updatePayload.pickup_end = new Date(updateOfferDto.pickup_end);
+        const parsedPickupWindows = updateOfferDto.pickup_windows !== undefined
+            ? this.parsePickupWindows(updateOfferDto.pickup_windows)
+            : undefined;
+
+        if (parsedPickupWindows !== undefined) {
+            if (parsedPickupWindows.length > 0) {
+                updatePayload.pickup_start = parsedPickupWindows.reduce(
+                    (min, w) => (w.starts_at < min ? w.starts_at : min),
+                    parsedPickupWindows[0].starts_at,
+                );
+                updatePayload.pickup_end = parsedPickupWindows.reduce(
+                    (max, w) => (w.ends_at > max ? w.ends_at : max),
+                    parsedPickupWindows[0].ends_at,
+                );
+            }
+        } else {
+            if (updateOfferDto.pickup_start) updatePayload.pickup_start = new Date(updateOfferDto.pickup_start);
+            if (updateOfferDto.pickup_end) updatePayload.pickup_end = new Date(updateOfferDto.pickup_end);
+        }
 
         const start = updatePayload.pickup_start || offer.pickup_start;
         const end = updatePayload.pickup_end || offer.pickup_end;
         if (end <= start) throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
 
+        Object.assign(updatePayload, uploadedFileFields);
+        updatePayload.updated_by = currentUser?.id;
+
         await this.offersRepository.update(id, updatePayload);
 
-        const updated = await this.offersRepository.findOne({ where: { id }, relations: ['business', 'category'] });
+        if (parsedPickupWindows !== undefined) {
+            await this.offerPickupWindowsRepository.delete({ offer_id: id });
+            if (parsedPickupWindows.length > 0) {
+                await this.offerPickupWindowsRepository.save(
+                    parsedPickupWindows.map((w) =>
+                        this.offerPickupWindowsRepository.create({
+                            offer_id: id,
+                            starts_at: w.starts_at,
+                            ends_at: w.ends_at,
+                            max_pickups_per_window: w.max_pickups_per_window,
+                        }),
+                    ),
+                );
+            }
+        }
+
+        const updated = await this.offersRepository.findOne({
+            where: { id, is_archived: false },
+            relations: ['business', 'category', 'created_by_staff', 'updater', 'archiver', 'pickup_windows'],
+        });
         if (!updated) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
+
+        if (oldUrlsToDelete.length) {
+            await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
+        }
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.UPDATED,
@@ -143,12 +253,73 @@ export class OffersService {
         );
     }
 
-    async remove(id: string): Promise<ApiResponseDto<{ id: string }>> {
-        const offer = await this.offersRepository.findOne({ where: { id } });
+    async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {
+        const offer = await this.offersRepository.findOne({ where: { id, is_archived: false } });
         if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
 
-        await this.offersRepository.softDelete(id);
+        offer.is_archived = true;
+        offer.archived_by = currentUser?.id;
+        offer.archived_at = new Date();
+        offer.is_active = false;
+        await this.offersRepository.save(offer);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.OFFER.DELETED, { id });
+    }
+
+    private async buildOfferFileUpdates(
+        files?: OfferUploadFiles,
+        existingOffer?: Offer,
+    ): Promise<{
+        main_image_url?: string;
+        gallery_images?: string[];
+        oldUrlsToDelete: string[];
+    }> {
+        const oldUrlsToDelete: string[] = [];
+        const updates: {
+            main_image_url?: string;
+            gallery_images?: string[];
+            oldUrlsToDelete: string[];
+        } = { oldUrlsToDelete };
+
+        const mainImage = files?.main_image_url?.[0];
+        if (mainImage) {
+            updates.main_image_url = await this.s3UploadService.uploadFile(mainImage, 'offers/main-images');
+            if (existingOffer?.main_image_url) oldUrlsToDelete.push(existingOffer.main_image_url);
+        }
+
+        const galleryImages = files?.gallery_images;
+        if (galleryImages?.length) {
+            updates.gallery_images = await this.s3UploadService.uploadFiles(galleryImages, 'offers/gallery');
+            if (existingOffer?.gallery_images?.length) {
+                oldUrlsToDelete.push(...existingOffer.gallery_images);
+            }
+        }
+
+        return updates;
+    }
+
+    private parsePickupWindows(
+        pickupWindows?: Array<{
+            starts_at: string;
+            ends_at: string;
+            max_pickups_per_window?: number;
+        }>,
+    ): Array<{ starts_at: Date; ends_at: Date; max_pickups_per_window?: number }> {
+        if (!pickupWindows?.length) return [];
+
+        return pickupWindows.map((window) => {
+            const startsAt = new Date(window.starts_at);
+            const endsAt = new Date(window.ends_at);
+
+            if (endsAt <= startsAt) {
+                throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
+            }
+
+            return {
+                starts_at: startsAt,
+                ends_at: endsAt,
+                max_pickups_per_window: window.max_pickups_per_window,
+            };
+        });
     }
 }

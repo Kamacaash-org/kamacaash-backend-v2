@@ -5,9 +5,10 @@ import { OffersController } from './offers.controller';
 import { Offer } from './entities/offer.entity';
 import { OfferPickupWindow } from './entities/offer-pickup-window.entity';
 import { Business } from '../businesses/entities/business.entity';
+import { S3Module } from '../../common/s3.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Offer, OfferPickupWindow, Business])],
+    imports: [S3Module, TypeOrmModule.forFeature([Offer, OfferPickupWindow, Business])],
     controllers: [OffersController],
     providers: [OffersService],
     exports: [OffersService],

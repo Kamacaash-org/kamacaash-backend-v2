@@ -1,5 +1,34 @@
-import { IsString, IsNotEmpty, IsUUID, IsArray, IsOptional, IsNumber, Min, IsDateString, MaxLength } from 'class-validator';
+import {
+    IsString,
+    IsNotEmpty,
+    IsUUID,
+    IsArray,
+    IsOptional,
+    IsNumber,
+    Min,
+    IsDateString,
+    MaxLength,
+    ValidateNested,
+    IsInt,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+
+export class OfferPickupWindowInputDto {
+    @ApiProperty()
+    @IsDateString()
+    starts_at: string;
+
+    @ApiProperty()
+    @IsDateString()
+    ends_at: string;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    max_pickups_per_window?: number;
+}
 
 export class CreateOfferDto {
     @ApiProperty()
@@ -83,16 +112,25 @@ export class CreateOfferDto {
     @Min(1)
     max_per_user: number;
 
-    @ApiProperty()
+    @ApiPropertyOptional()
+    @IsOptional()
     @IsDateString()
-    pickup_start: string;
+    pickup_start?: string;
 
-    @ApiProperty()
+    @ApiPropertyOptional()
+    @IsOptional()
     @IsDateString()
-    pickup_end: string;
+    pickup_end?: string;
 
     @ApiPropertyOptional()
     @IsOptional()
     @IsString()
     pickup_instructions?: string;
+
+    @ApiPropertyOptional({ type: [OfferPickupWindowInputDto] })
+    @IsOptional()
+    @IsArray()
+    @ValidateNested({ each: true })
+    @Type(() => OfferPickupWindowInputDto)
+    pickup_windows?: OfferPickupWindowInputDto[];
 }

@@ -4,12 +4,14 @@ import {
     Index,
     ManyToOne,
     JoinColumn,
+    OneToMany,
 } from 'typeorm';
 import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { Business } from '../../businesses/entities/business.entity';
 import { BusinessCategory } from '../../categories/entities/business-category.entity';
 import { StaffUser } from '../../staff/entities/staff-user.entity';
 import { OfferStatus } from '../../../common/entities/enums/all.enums';
+import { OfferPickupWindow } from './offer-pickup-window.entity';
 
 @Entity('offers')
 export class Offer extends BaseSoftDeleteEntity {
@@ -19,6 +21,9 @@ export class Offer extends BaseSoftDeleteEntity {
     @ManyToOne(() => Business, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'business_id' })
     business: Business;
+
+    @OneToMany(() => OfferPickupWindow, (pickupWindow) => pickupWindow.offer)
+    pickup_windows: OfferPickupWindow[];
 
     @Column({ type: 'uuid', nullable: true })
     category_id: string;
@@ -33,6 +38,13 @@ export class Offer extends BaseSoftDeleteEntity {
     @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
     @JoinColumn({ name: 'created_by_staff_id' })
     created_by_staff: StaffUser;
+
+    @Column({ type: 'uuid', nullable: true })
+    updated_by: string;
+
+    @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'updated_by' })
+    updater: StaffUser;
 
     @Column({ length: 255 })
     title: string;
@@ -99,6 +111,16 @@ export class Offer extends BaseSoftDeleteEntity {
 
     @Column({ default: false })
     is_archived: boolean;
+
+    @Column({ type: 'uuid', nullable: true })
+    archived_by: string;
+
+    @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'archived_by' })
+    archiver: StaffUser;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    archived_at: Date;
 
     @Column({ default: false })
     is_featured: boolean;

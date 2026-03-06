@@ -2,6 +2,20 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { OfferStatus } from '../../../common/entities/enums/all.enums';
 import { Offer } from '../entities/offer.entity';
 
+class OfferPickupWindowResponseDto {
+    @ApiProperty()
+    id: string;
+
+    @ApiProperty()
+    starts_at: Date;
+
+    @ApiProperty()
+    ends_at: Date;
+
+    @ApiPropertyOptional()
+    max_pickups_per_window?: number;
+}
+
 export class OfferResponseDto {
     @ApiProperty()
     id: string;
@@ -11,6 +25,12 @@ export class OfferResponseDto {
     category_id: string;
     @ApiProperty()
     created_by_staff_id: string;
+    @ApiPropertyOptional()
+    updated_by?: string;
+    @ApiPropertyOptional()
+    archived_by?: string;
+    @ApiPropertyOptional()
+    archived_at?: Date;
     @ApiProperty()
     title: string;
     @ApiProperty()
@@ -65,6 +85,8 @@ export class OfferResponseDto {
     pickup_start: Date;
     @ApiProperty()
     pickup_end: Date;
+    @ApiPropertyOptional({ type: [OfferPickupWindowResponseDto] })
+    pickup_windows?: OfferPickupWindowResponseDto[];
     @ApiProperty()
     pickup_instructions: string;
     @ApiProperty()
@@ -98,6 +120,15 @@ export class OfferResponseDto {
     @ApiProperty()
     deleted_at: Date;
 
+    @ApiPropertyOptional({ type: Object })
+    created_by_staff?: { id: string; name: string; phone: string } | null;
+
+    @ApiPropertyOptional({ type: Object })
+    updated_by_staff?: { id: string; name: string; phone: string } | null;
+
+    @ApiPropertyOptional({ type: Object })
+    archived_by_staff?: { id: string; name: string; phone: string } | null;
+
     private static toLocal(date: Date | null | undefined, timezone?: string): string | undefined {
         if (!date || !timezone) return undefined;
         return new Intl.DateTimeFormat('sv-SE', {
@@ -119,6 +150,9 @@ export class OfferResponseDto {
             business_id: offer.business_id,
             category_id: offer.category_id,
             created_by_staff_id: offer.created_by_staff_id,
+            updated_by: (offer as any).updated_by,
+            archived_by: (offer as any).archived_by,
+            archived_at: (offer as any).archived_at,
             title: offer.title,
             slug: offer.slug,
             description: offer.description,
@@ -146,6 +180,12 @@ export class OfferResponseDto {
             is_limited_time: offer.is_limited_time,
             pickup_start: offer.pickup_start,
             pickup_end: offer.pickup_end,
+            pickup_windows: (offer as any).pickup_windows?.map((w: any) => ({
+                id: w.id,
+                starts_at: w.starts_at,
+                ends_at: w.ends_at,
+                max_pickups_per_window: w.max_pickups_per_window,
+            })) ?? [],
             pickup_instructions: offer.pickup_instructions,
             advance_notice_hours: offer.advance_notice_hours,
             expires_at: offer.expires_at,
@@ -162,6 +202,27 @@ export class OfferResponseDto {
             created_at: offer.created_at,
             updated_at: offer.updated_at,
             deleted_at: offer.deleted_at,
+            created_by_staff: (offer as any).created_by_staff
+                ? {
+                    id: (offer as any).created_by_staff.id,
+                    name: `${(offer as any).created_by_staff.first_name} ${(offer as any).created_by_staff.last_name}`,
+                    phone: (offer as any).created_by_staff.phone_e164,
+                }
+                : null,
+            updated_by_staff: (offer as any).updater
+                ? {
+                    id: (offer as any).updater.id,
+                    name: `${(offer as any).updater.first_name} ${(offer as any).updater.last_name}`,
+                    phone: (offer as any).updater.phone_e164,
+                }
+                : null,
+            archived_by_staff: (offer as any).archiver
+                ? {
+                    id: (offer as any).archiver.id,
+                    name: `${(offer as any).archiver.first_name} ${(offer as any).archiver.last_name}`,
+                    phone: (offer as any).archiver.phone_e164,
+                }
+                : null,
         };
     }
 }
