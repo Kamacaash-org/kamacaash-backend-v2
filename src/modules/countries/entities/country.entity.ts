@@ -1,6 +1,6 @@
 import { Entity, Column, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
-import { StaffUser } from 'src/modules/staff/entities/staff-user.entity';
+import { StaffUser } from '../../staff/entities/staff-user.entity';
 
 @Entity('countries')
 export class Country extends BaseEntity {
