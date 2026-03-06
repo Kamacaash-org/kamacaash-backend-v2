@@ -25,7 +25,7 @@ import { BusinessResponseDto } from './dto/business-response.dto';
 import { FindNearbyBusinessesDto } from './dto/find-nearby-businesses.dto';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
 import { ToggleBusinessStatusDto } from './dto/toggle-business-status.dto';
-import { BusinessVerificationStatus } from 'src/common/entities/enums/all.enums';
+import { BusinessVerificationStatus } from '../../common/entities/enums/all.enums';
 
 type BusinessUploadFiles = {
     logo_url?: UploadedFile[];

@@ -2,7 +2,7 @@ import { Controller, Get, Param, Post, Request, UseGuards, UseInterceptors, Uplo
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
 import { BusinessContractService } from './BusinessContract.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiResponseDto } from 'src/common/dto/api-response.dto';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
 import {

@@ -6,8 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppUser } from '../../users/entities/app-user.entity';
 import { StaffUser } from '../../staff/entities/staff-user.entity';
-import { UserRole } from 'src/common/entities/enums/all.enums';
-
+import { UserRole } from '../../../common/entities/enums/all.enums';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
     constructor(

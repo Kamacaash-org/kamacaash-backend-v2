@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BusinessContract } from './entities/business-contract.entity';
 import { StaffUser } from '../staff/entities/staff-user.entity';
-import { ApiResponseDto } from 'src/common/dto/api-response.dto';
+import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
 import { Business } from './entities/business.entity';

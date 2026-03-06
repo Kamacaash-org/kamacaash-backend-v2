@@ -15,7 +15,7 @@ import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
-import { BusinessVerificationStatus } from 'src/common/entities/enums/all.enums';
+import { BusinessVerificationStatus } from '../../common/entities/enums/all.enums';
 import { BusinessVerificationListDto } from './dto/business-verification.dto';
 
 type BusinessUploadFiles = {
