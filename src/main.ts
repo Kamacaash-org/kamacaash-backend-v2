@@ -9,9 +9,25 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   //  ENABLE CORS
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3001', 'https://admin.kamacaash.com'], // your frontend
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    origin: (origin, callback) => {
+      const allowed = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://admin.kamacaash.com',
+        'https://api.kamacaash.com',
+      ];
+
+      // allow requests with no origin (mobile apps, curl, postman)
+      if (!origin) return callback(null, true);
+
+      if (allowed.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
   const config = new DocumentBuilder()
     .setTitle('Kamacaash API')
