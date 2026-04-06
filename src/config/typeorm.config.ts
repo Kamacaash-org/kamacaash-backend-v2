@@ -35,5 +35,5 @@ export default new DataSource({
     },
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/migrations/*.ts'],
-    synchronize: true, // ✅ for now (dev)
+    synchronize: false, // ✅ for now (dev)
 });

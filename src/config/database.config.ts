@@ -31,9 +31,9 @@ export default registerAs('database', () => ({
 
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
 
-    synchronize: true, // ✅ FORCE for now (dev)
+    synchronize: false, // ✅ FORCE for now (dev)
 
-    logging: true,
+    logging: false,
 
     migrations: [__dirname + '/../migrations/*{.ts,.js}'],
 
