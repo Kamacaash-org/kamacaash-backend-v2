@@ -25,6 +25,7 @@ export class OfferPickupWindowInputDto {
 
     @ApiPropertyOptional()
     @IsOptional()
+    @Type(() => Number)
     @IsInt()
     @Min(1)
     max_pickups_per_window?: number;
@@ -86,28 +87,32 @@ export class CreateOfferDto {
     @IsString({ each: true })
     gallery_images?: string[];
 
-    @ApiPropertyOptional({ default: 'EUR', description: 'Ignored when business has enforced currency/country defaults' })
+    @ApiPropertyOptional({ default: 'USD', description: 'Ignored when business has enforced currency/country defaults' })
     @IsOptional()
     @IsString()
     @IsNotEmpty()
     currency_code?: string;
 
     @ApiProperty()
+    @Type(() => Number)
     @IsNumber()
     @Min(0)
     original_price_minor: number;
 
     @ApiProperty()
+    @Type(() => Number)
     @IsNumber()
     @Min(0)
     offer_price_minor: number;
 
     @ApiProperty()
+    @Type(() => Number)
     @IsNumber()
     @Min(1)
     quantity_total: number;
 
     @ApiProperty({ default: 1 })
+    @Type(() => Number)
     @IsNumber()
     @Min(1)
     max_per_user: number;
