@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StaffService } from './staff.service';
-import { StaffController } from './staff.controller';
+import { AdminStaffController } from './admin/admin-staff.controller';
 import { StaffUser } from './entities/staff-user.entity';
 import { AuthModule } from '../auth/auth.module';
 import { Country } from '../countries/entities/country.entity';
@@ -23,7 +23,7 @@ import { S3Module } from '../../common/s3.module';
         }),
         AuthModule
     ],
-    controllers: [StaffController],
+    controllers: [AdminStaffController],
     providers: [StaffService],
     exports: [StaffService],
 })

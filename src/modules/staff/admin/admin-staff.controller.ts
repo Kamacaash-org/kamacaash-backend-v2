@@ -13,32 +13,32 @@ import {
     UseInterceptors,
     UploadedFiles,
 } from '@nestjs/common';
-import { StaffService } from './staff.service';
-import { CreateStaffDto } from './dto/create-staff.dto';
-import { UpdateStaffDto } from './dto/update-staff.dto';
-import { StaffLoginDto } from './dto/staff-login.dto';
-import { StaffVerify2faDto } from './dto/staff-verify-2fa.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { StaffService } from '../staff.service';
+import { CreateStaffDto } from '../dto/create-staff.dto';
+import { UpdateStaffDto } from '../dto/update-staff.dto';
+import { StaffLoginDto } from '../dto/staff-login.dto';
+import { StaffVerify2faDto } from '../dto/staff-verify-2fa.dto';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { StaffResponseDto } from './dto/staff-response.dto';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
+import { StaffResponseDto } from '../dto/staff-response.dto';
 import {
     StaffLogin2faRequiredResponseDto,
     StaffSessionResponseDto,
-} from './dto/staff-auth-response.dto';
-import { ApproveStaffDto } from './dto/approve-staff.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ChangePasswordDto } from './dto/ChangePassword.dto';
+} from '../dto/staff-auth-response.dto';
+import { ApproveStaffDto } from '../dto/approve-staff.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { ChangePasswordDto } from '../dto/ChangePassword.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
 
 type StaffUploadFiles = {
     profile_image_url?: UploadedFile[];
 };
 
-@ApiTags('staff')
-@Controller('staff')
-export class StaffController {
+@ApiTags('admin/staff')
+@Controller('admin/staff')
+export class AdminStaffController {
     constructor(private readonly staffService: StaffService) { }
 
     @Post('login')

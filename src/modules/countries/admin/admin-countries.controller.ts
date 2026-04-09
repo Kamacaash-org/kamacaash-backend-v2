@@ -1,15 +1,15 @@
 import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request } from '@nestjs/common';
-import { CountriesService } from './countries.service';
+import { CountriesService } from '../countries.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateCountryDto } from './dto/create-country.dto';
-import { UpdateCountryDto } from './dto/update-country.dto';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { CountryResponseDto } from './dto/country-response.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateCountryDto } from '../dto/create-country.dto';
+import { UpdateCountryDto } from '../dto/update-country.dto';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
+import { CountryResponseDto } from '../dto/country-response.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
-@ApiTags('countries')
-@Controller('countries')
-export class CountriesController {
+@ApiTags('admin/countries')
+@Controller('admin/countries')
+export class AdminCountriesController {
     constructor(private readonly countriesService: CountriesService) { }
 
     @Get()

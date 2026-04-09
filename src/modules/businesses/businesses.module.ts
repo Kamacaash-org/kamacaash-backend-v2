@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BusinessesService } from './businesses.service';
-import { BusinessesController } from './businesses.controller';
+import { AdminBusinessesController } from './admin/admin-businesses.controller';
 import { Business } from './entities/business.entity';
 import { BusinessOpeningHours } from './entities/business-opening-hours.entity';
 import { BusinessStaff } from './entities/business-staff.entity';
@@ -24,7 +24,7 @@ import { S3Module } from '../../common/s3.module';
             StaffUser,
         ]),
     ],
-    controllers: [BusinessesController],
+    controllers: [AdminBusinessesController],
     providers: [BusinessesService],
     exports: [BusinessesService],
 })

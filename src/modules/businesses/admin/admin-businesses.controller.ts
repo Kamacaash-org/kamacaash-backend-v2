@@ -14,18 +14,18 @@ import {
     Patch,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { BusinessesService } from './businesses.service';
-import { CreateBusinessDto } from './dto/create-business.dto';
-import { UpdateBusinessDto } from './dto/update-business.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { BusinessesService } from '../businesses.service';
+import { CreateBusinessDto } from '../dto/create-business.dto';
+import { UpdateBusinessDto } from '../dto/update-business.dto';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { BusinessResponseDto } from './dto/business-response.dto';
-import { FindNearbyBusinessesDto } from './dto/find-nearby-businesses.dto';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
-import { ToggleBusinessStatusDto } from './dto/toggle-business-status.dto';
-import { BusinessVerificationStatus } from '../../common/entities/enums/all.enums';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
+import { BusinessResponseDto } from '../dto/business-response.dto';
+import { FindNearbyBusinessesDto } from '../dto/find-nearby-businesses.dto';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
+import { ToggleBusinessStatusDto } from '../dto/toggle-business-status.dto';
+import { BusinessVerificationStatus } from '../../../common/entities/enums/all.enums';
 
 type BusinessUploadFiles = {
     logo_url?: UploadedFile[];
@@ -34,9 +34,9 @@ type BusinessUploadFiles = {
     gallery_images?: UploadedFile[];
 };
 
-@ApiTags('businesses')
-@Controller('businesses')
-export class BusinessesController {
+@ApiTags('admin/businesses')
+@Controller('admin/businesses')
+export class AdminBusinessesController {
     constructor(private readonly businessesService: BusinessesService) { }
 
     @UseGuards(JwtAuthGuard)

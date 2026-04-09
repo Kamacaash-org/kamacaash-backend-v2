@@ -1,24 +1,24 @@
 import { Controller, Get, Param, Post, Request, UseGuards, UseInterceptors, UploadedFiles, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags, ApiConsumes } from '@nestjs/swagger';
-import { BusinessContractService } from './BusinessContract.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { BusinessContractService } from '../BusinessContract.service';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
 import {
     ContractBusinessShortDto,
     SignedBusinessContractResponseDto,
     UploadContractDto,
     UploadContractResponseDto,
-} from './dto/business-contract.dto';
+} from '../dto/business-contract.dto';
 
 type ContractUploadFiles = {
     contractDocument?: UploadedFile[];
 };
 
-@ApiTags('Business Contracts')
-@Controller('business-contracts')
-export class BusinessContractController {
+@ApiTags('admin/business-contracts')
+@Controller('admin/business-contracts')
+export class AdminBusinessContractController {
     constructor(private readonly contractService: BusinessContractService) { }
 
     @UseGuards(JwtAuthGuard)
