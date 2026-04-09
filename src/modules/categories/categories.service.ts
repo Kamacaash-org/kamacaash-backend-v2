@@ -40,6 +40,28 @@ export class CategoriesService {
         );
     }
 
+    async findAllForApp(): Promise<ApiResponseDto<any[]>> {
+        const categories = await this.categoriesRepository.find({
+            where: { is_archived: false, is_active: true },
+            order: { sort_order: 'ASC' },
+            select: ['id', 'name', 'icon_url', 'image_url', 'slug', 'sort_order']
+        });
+        
+        const mapped = categories.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            icon: cat.icon_url,
+            image: cat.image_url,
+            slug: cat.slug,
+            order_number: cat.sort_order,
+        }));
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.CATEGORY.LIST_FETCHED,
+            mapped,
+        );
+    }
+
     async getCategoriesDdl() {
         const ddl = await getDdlOptions(this.categoriesRepository, {
             where: { is_archived: false, is_active: true },

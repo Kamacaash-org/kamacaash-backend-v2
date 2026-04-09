@@ -2,12 +2,12 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Offer } from './entities/offer.entity';
-import { CreateOfferDto } from './dto/create-offer.dto';
-import { UpdateOfferDto } from './dto/update-offer.dto';
+import { CreateOfferDto } from './admin/dto/create-offer.dto';
+import { UpdateOfferDto } from './admin/dto/update-offer.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { OfferStatus } from '../../common/entities/enums/all.enums';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { OfferResponseDto } from './dto/offer-response.dto';
+import { OfferResponseDto } from './admin/dto/offer-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { Business } from '../businesses/entities/business.entity';
 import { S3UploadService } from '../../common/services/s3-upload.service';
@@ -136,6 +136,136 @@ export class OffersService {
             DEFAULT_MESSAGES.OFFER.LIST_FETCHED,
             data.map((offer) => OfferResponseDto.fromEntity(offer)),
             { total, page, lastPage: Math.ceil(total / limit), limit },
+        );
+    }
+
+    async findAllForApp(paginationDto: PaginationDto, queryParams?: any): Promise<ApiResponseDto<any[]>> {
+        const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
+        const query = this.offersRepository
+            .createQueryBuilder('offer')
+            .leftJoinAndSelect('offer.business', 'business')
+            .leftJoinAndSelect('offer.category', 'category')
+            .where('offer.is_archived = :isArchived', { isArchived: false })
+            .andWhere('offer.status = :status', { status: OfferStatus.PUBLISHED });
+
+        if (search) {
+            query.andWhere('(offer.title ILIKE :search OR offer.short_description ILIKE :search)', { search: `%${search}%` });
+        }
+
+        if (queryParams?.business_id) {
+            query.andWhere('offer.business_id = :business_id', { business_id: queryParams.business_id });
+        }
+
+        if (queryParams?.category_id) {
+            query.andWhere('offer.category_id = :category_id', { category_id: queryParams.category_id });
+        }
+
+        if (queryParams?.lat !== undefined && queryParams?.lng !== undefined) {
+            query.addSelect(`ST_Distance(business.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326))`, 'distance_meters');
+            query.setParameter('lng', queryParams.lng);
+            query.setParameter('lat', queryParams.lat);
+        }
+
+        query.orderBy('offer.created_at', order);
+        query.skip((page - 1) * limit);
+        query.take(limit);
+
+        const total = await query.getCount();
+        const { entities, raw } = await query.getRawAndEntities();
+
+        const mapped = entities.map(offer => {
+            const rawRow = raw.find((r) => r.offer_id === offer.id);
+            return {
+                id: offer.id,
+                title: offer.title,
+                slug: offer.slug,
+                short_description: offer.short_description,
+                main_image_url: offer.main_image_url,
+                currency_code: offer.currency_code,
+                original_price_minor: offer.original_price_minor,
+                offer_price_minor: offer.offer_price_minor,
+                discount_percentage: offer.discount_percentage,
+                quantity_remaining: offer.quantity_remaining,
+                is_featured: offer.is_featured,
+                is_limited_time: offer.is_limited_time,
+                average_rating: offer.average_rating,
+                total_reviews: offer.total_reviews,
+                pickup_start: offer.pickup_start,
+                pickup_end: offer.pickup_end,
+                business_name: offer.business?.display_name,
+                category_name: offer.category?.name,
+                distance_km: rawRow && rawRow.distance_meters != null ? parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2)) : 0,
+            };
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.OFFER.LIST_FETCHED,
+            mapped,
+            { total, page, lastPage: Math.ceil(total / limit), limit },
+        );
+    }
+
+    async findOneForApp(id: string, queryParams?: { lat?: number, lng?: number }): Promise<ApiResponseDto<any>> {
+        const query = this.offersRepository
+            .createQueryBuilder('offer')
+            .leftJoinAndSelect('offer.business', 'business')
+            .leftJoinAndSelect('offer.category', 'category')
+            .leftJoinAndSelect('offer.pickup_windows', 'pickup_windows')
+            .where('offer.id = :id', { id })
+            .andWhere('offer.is_archived = :isArchived', { isArchived: false })
+            .andWhere('offer.status = :status', { status: OfferStatus.PUBLISHED });
+
+        if (queryParams?.lat !== undefined && queryParams?.lng !== undefined) {
+            query.addSelect(`ST_Distance(business.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326))`, 'distance_meters');
+            query.setParameter('lng', queryParams.lng);
+            query.setParameter('lat', queryParams.lat);
+        }
+
+        const { entities, raw } = await query.getRawAndEntities();
+        if (!entities.length) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
+        
+        const offer = entities[0];
+        const rawRow = raw[0];
+
+        const mapped = {
+            id: offer.id,
+            title: offer.title,
+            slug: offer.slug,
+            description: offer.description,
+            short_description: offer.short_description,
+            main_image_url: offer.main_image_url,
+            gallery_images: offer.gallery_images,
+            tags: offer.tags,
+            dietary_info: offer.dietary_info,
+            allergen_info: offer.allergen_info,
+            currency_code: offer.currency_code,
+            original_price_minor: offer.original_price_minor,
+            offer_price_minor: offer.offer_price_minor,
+            discount_percentage: offer.discount_percentage,
+            quantity_remaining: offer.quantity_remaining,
+            max_per_user: offer.max_per_user,
+            is_featured: offer.is_featured,
+            is_limited_time: offer.is_limited_time,
+            average_rating: offer.average_rating,
+            total_reviews: offer.total_reviews,
+            pickup_start: offer.pickup_start,
+            pickup_end: offer.pickup_end,
+            pickup_windows: offer.pickup_windows?.map(w => ({
+                id: w.id,
+                starts_at: w.starts_at,
+                ends_at: w.ends_at,
+                max_pickups_per_window: w.max_pickups_per_window,
+            })) || [],
+            pickup_instructions: offer.pickup_instructions,
+            advance_notice_hours: offer.advance_notice_hours,
+            business_name: offer.business?.display_name,
+            category_name: offer.category?.name,
+            distance_km: rawRow && rawRow.distance_meters != null ? parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2)) : 0,
+        };
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.OFFER.FETCHED,
+            mapped,
         );
     }
 

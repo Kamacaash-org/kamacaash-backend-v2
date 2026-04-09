@@ -1,0 +1,89 @@
+# Postman API Payloads for Mobile App
+
+Here are the ready-to-use payloads for testing the new Mobile App User APIs in Postman.
+
+_Base URL assumption: `http://localhost:3000`_
+
+---
+
+## 1. Register / Request OTP
+
+**URL:** `POST http://localhost:3000/app/users/register`  
+**Headers:** `Content-Type: application/json`  
+**Body (raw JSON):**
+```json
+{
+    "phone": "+252615000000",
+    "phone_country_code": "SO",
+    "device_id": "c1f7b9c2-5555-4e00-8b1a-2d3e4f5a6b7c",
+    "device_type": "ios",
+    "device_name": "John's iPhone 13",
+    "device_model": "iPhone 13 Pro",
+    "os_version": "16.5.1",
+    "app_version": "1.0.0",
+    "push_token": "fcm_or_apns_token_string_here"
+}
+```
+
+---
+
+## 2. Verify OTP
+
+**URL:** `POST http://localhost:3000/app/users/verify-otp`  
+**Headers:** `Content-Type: application/json`  
+**Body (raw JSON):**
+```json
+{
+    "phone": "+252615000000",
+    "otp": "123456"
+}
+```
+> [!NOTE] 
+> Take the `access_token` from the response of this request and use it as a Bearer Token for the following Profile requests.
+
+---
+
+## 3. Resend OTP
+
+**URL:** `POST http://localhost:3000/app/users/resend-otp`  
+**Headers:** `Content-Type: application/json`  
+**Body (raw JSON):**
+```json
+{
+    "phone": "+252615000000"
+}
+```
+
+---
+
+## 4. Get User Profile
+
+**URL:** `GET http://localhost:3000/app/users/profile`  
+**Headers:** 
+- `Authorization: Bearer <your_access_token>`
+**Body:** None  
+
+---
+
+## 5. Update Profile
+
+**URL:** `PUT http://localhost:3000/app/users/profile`  
+**Headers:** 
+- `Authorization: Bearer <your_access_token>`
+- _Note: Do **not** manually set `Content-Type`. Let Postman set it to `multipart/form-data` automatically, along with the boundary._
+
+**Body (form-data):**
+
+In Postman, select **Body** > **form-data** and input the following key-value pairs:
+
+| Key | Type | Value |
+| :--- | :--- | :--- |
+| `first_name` | Text | `John` |
+| `last_name` | Text | `Doe` |
+| `email` | Text | `john.doe@example.com` |
+| `preferred_language` | Text | `en` |
+| `preferred_currency` | Text | `USD` |
+| `profile_image_url` | **File** | *(Click "Select Files" and choose an image)* |
+
+> [!TIP]
+> Since this endpoint uses `@UseInterceptors(FileFieldsInterceptor())`, using `form-data` is strictly required to pass the avatar image file together with the text fields.

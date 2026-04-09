@@ -7,16 +7,15 @@ import {
     Query,
     Patch,
 } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { PaginationDto } from '../../common/dto/pagination.dto';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { UserStatus } from '../../common/entities/enums/all.enums';
+import { UsersService } from '../users.service';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { UserStatus } from '../../../common/entities/enums/all.enums';
 
-@ApiTags('users')
-@Controller('users')
-export class UsersController {
+@ApiTags('admin/users')
+@Controller('admin/users')
+export class AdminUsersController {
     constructor(private readonly usersService: UsersService) { }
-
 
     @Get()
     @ApiOperation({ summary: 'List all users' })
@@ -29,7 +28,6 @@ export class UsersController {
     findOne(@Param('id') id: string) {
         return this.usersService.findOne(id);
     }
-
 
     @Delete(':id')
     @ApiOperation({ summary: 'Soft delete user' })

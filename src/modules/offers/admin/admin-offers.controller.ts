@@ -1,36 +1,25 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Body,
-    Put,
-    Param,
-    Delete,
-    Query,
-    UseGuards,
-    Request,
-    UseInterceptors,
-    UploadedFiles,
+    Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards, Request, UseInterceptors, UploadedFiles
 } from '@nestjs/common';
-import { OffersService } from './offers.service';
+import { OffersService } from '../offers.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery, ApiConsumes } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
 import { OfferResponseDto } from './dto/offer-response.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
 
 type OfferUploadFiles = {
     main_image_url?: UploadedFile[];
     gallery_images?: UploadedFile[];
 };
 
-@ApiTags('offers')
-@Controller('offers')
-export class OffersController {
+@ApiTags('admin/offers')
+@Controller('admin/offers')
+export class AdminOffersController {
     constructor(private readonly offersService: OffersService) { }
 
     @UseGuards(JwtAuthGuard)

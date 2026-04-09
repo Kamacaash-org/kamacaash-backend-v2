@@ -1,22 +1,22 @@
 import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
-import { CategoriesService } from './categories.service';
+import { CategoriesService } from '../categories.service';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { CreateCategoryDto } from './dto/create-category.dto';
-import { UpdateCategoryDto } from './dto/update-category.dto';
-import { ApiResponseDto } from '../../common/dto/api-response.dto';
-import { CategoryResponseDto } from './dto/category-response.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateCategoryDto } from '../dto/create-category.dto';
+import { UpdateCategoryDto } from '../dto/update-category.dto';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
+import { CategoryResponseDto } from '../dto/category-response.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
 
 type CategoryUploadFiles = {
     icon_url?: UploadedFile[];
     image_url?: UploadedFile[];
 };
 
-@ApiTags('categories')
-@Controller('categories')
-export class CategoriesController {
+@ApiTags('admin/categories')
+@Controller('admin/categories')
+export class AdminCategoriesController {
     constructor(private readonly categoriesService: CategoriesService) { }
 
     @Get()

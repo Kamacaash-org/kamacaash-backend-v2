@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { OfferStatus } from '../../../common/entities/enums/all.enums';
-import { Offer } from '../entities/offer.entity';
+import { OfferStatus } from '../../../../common/entities/enums/all.enums';
+import { Offer } from '../../entities/offer.entity';
 
 class OfferPickupWindowResponseDto {
     @ApiProperty()
@@ -23,6 +23,10 @@ export class OfferResponseDto {
     business_id: string;
     @ApiProperty()
     category_id: string;
+    @ApiPropertyOptional()
+    business_name?: string;
+    @ApiPropertyOptional()
+    category_name?: string;
     @ApiProperty()
     created_by_staff_id: string;
     @ApiPropertyOptional()
@@ -148,7 +152,9 @@ export class OfferResponseDto {
         return {
             id: offer.id,
             business_id: offer.business_id,
+            business_name: (offer as any).business?.display_name,
             category_id: offer.category_id,
+            category_name: (offer as any).category?.name,
             created_by_staff_id: offer.created_by_staff_id,
             updated_by: (offer as any).updated_by,
             archived_by: (offer as any).archived_by,
