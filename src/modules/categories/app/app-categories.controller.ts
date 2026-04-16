@@ -9,7 +9,7 @@ export class AppCategoriesController {
     constructor(private readonly categoriesService: CategoriesService) { }
 
     @Get()
-    @ApiOperation({ summary: 'List categories for mobile app' })
+    @ApiOperation({ summary: 'List categories for app' })
     findAllForApp(): Promise<ApiResponseDto<any[]>> {
         return this.categoriesService.findAllForApp();
     }

@@ -17,7 +17,7 @@ async function bootstrap() {
         'https://api.kamacaash.com',
       ];
 
-      // allow requests with no origin (mobile apps, curl, postman)
+      // allow requests with no origin (apps, curl, postman)
       if (!origin) return callback(null, true);
 
       if (allowed.includes(origin)) {

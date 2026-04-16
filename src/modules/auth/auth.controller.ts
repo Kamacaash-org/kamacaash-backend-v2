@@ -12,13 +12,13 @@ export class AuthController {
     constructor(private readonly authService: AuthService) { }
 
     @Post('user/register')
-    @ApiOperation({ summary: 'Register/Login mobile user (Request OTP)' })
+    @ApiOperation({ summary: 'Register/Login app user (Request OTP)' })
     registerUser(@Body() registerDto: UserRegisterDto): Promise<ApiResponseDto<AuthOtpRequestResponseDto>> {
         return this.authService.requestPhoneOtp(registerDto);
     }
 
     @Post('user/verify')
-    @ApiOperation({ summary: 'Verify mobile user OTP' })
+    @ApiOperation({ summary: 'Verify app user OTP' })
     verifyUser(@Body() verifyDto: UserVerifyDto): Promise<ApiResponseDto<AuthVerifyResponseDto>> {
         return this.authService.verifyPhoneOtp(verifyDto);
     }

@@ -31,29 +31,29 @@ export class AppUsersController {
     constructor(private readonly usersService: UsersService) { }
 
     @Post('register')
-    @ApiOperation({ summary: 'Register/Login mobile user (Request OTP)' })
+    @ApiOperation({ summary: 'Register/Login app user (Request OTP)' })
     register(@Body() registerDto: RegisterAppUserDto) {
-        return this.usersService.registerFromMobile(registerDto);
+        return this.usersService.registerFromApp(registerDto);
     }
 
     @Post('verify-otp')
-    @ApiOperation({ summary: 'Verify mobile user OTP' })
+    @ApiOperation({ summary: 'Verify app user OTP' })
     verifyOtp(@Body() verifyDto: VerifyAppUserDto) {
-        return this.usersService.verifyOtpFromMobile(verifyDto);
+        return this.usersService.verifyOtpFromApp(verifyDto);
     }
 
     @Post('resend-otp')
-    @ApiOperation({ summary: 'Resend Mobile OTP' })
+    @ApiOperation({ summary: 'Resend app OTP' })
     resendOtp(@Body() resendDto: ResendOtpDto) {
-        return this.usersService.resendOtpFromMobile(resendDto);
+        return this.usersService.resendOtpFromApp(resendDto);
     }
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
     @Get('profile')
-    @ApiOperation({ summary: 'Get mobile user profile' })
+    @ApiOperation({ summary: 'Get app user profile' })
     getProfile(@Request() req) {
-        return this.usersService.getProfileFromMobile(req.user);
+        return this.usersService.getProfileFromApp(req.user);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -61,12 +61,12 @@ export class AppUsersController {
     @UseInterceptors(FileFieldsInterceptor([{ name: 'profile_image_url', maxCount: 1 }]))
     @Put('profile')
     @ApiConsumes('multipart/form-data', 'application/json')
-    @ApiOperation({ summary: 'Update mobile user profile' })
+    @ApiOperation({ summary: 'Update app user profile' })
     updateProfile(
         @Body() updateDto: UpdateAppUserProfileDto,
         @Request() req,
         @UploadedFiles() files: ProfileUploadFiles,
     ) {
-        return this.usersService.updateProfileFromMobile(req.user.id, updateDto, files);
+        return this.usersService.updateProfileFromApp(req.user.id, updateDto, files);
     }
 }

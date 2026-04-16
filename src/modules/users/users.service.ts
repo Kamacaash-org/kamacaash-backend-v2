@@ -76,7 +76,7 @@ export class UsersService {
 
     // --- APP USER APIs ---
 
-    async registerFromMobile(dto: RegisterAppUserDto): Promise<ApiResponseDto<any>> {
+    async registerFromApp(dto: RegisterAppUserDto): Promise<ApiResponseDto<any>> {
         let user = await this.usersRepository.findOne({ where: { phone_e164: dto.phone } });
 
         if (!user) {
@@ -99,7 +99,7 @@ export class UsersService {
         });
     }
 
-    async verifyOtpFromMobile(dto: VerifyAppUserDto): Promise<ApiResponseDto<any>> {
+    async verifyOtpFromApp(dto: VerifyAppUserDto): Promise<ApiResponseDto<any>> {
         const user = await this.usersRepository.findOne({ where: { phone_e164: dto.phone } });
         if (!user) throw new UnauthorizedException(DEFAULT_MESSAGES.AUTH.USER_NOT_FOUND);
 
@@ -120,13 +120,13 @@ export class UsersService {
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.OTP_VERIFIED, {
             access_token: this.jwtService.sign(payload),
-            refresh_token: this.jwtService.sign(payload, { expiresIn: '7d' }),
+            refresh_token: this.jwtService.sign(payload),
             // user,
             isNewUser
         });
     }
 
-    async resendOtpFromMobile(dto: ResendOtpDto): Promise<ApiResponseDto<any>> {
+    async resendOtpFromApp(dto: ResendOtpDto): Promise<ApiResponseDto<any>> {
         const user = await this.usersRepository.findOne({ where: { phone_e164: dto.phone } });
         if (!user) throw new UnauthorizedException(DEFAULT_MESSAGES.AUTH.USER_NOT_FOUND);
 
@@ -135,12 +135,12 @@ export class UsersService {
         });
     }
 
-    async getProfileFromMobile(currentUser: any): Promise<ApiResponseDto<any>> {
+    async getProfileFromApp(currentUser: any): Promise<ApiResponseDto<any>> {
         const user = await this.findOne(currentUser.id);
         return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.PROFILE_FETCHED, { user });
     }
 
-    async updateProfileFromMobile(userId: string, dto: UpdateAppUserProfileDto, files?: ProfileUploadFiles): Promise<ApiResponseDto<any>> {
+    async updateProfileFromApp(userId: string, dto: UpdateAppUserProfileDto, files?: ProfileUploadFiles): Promise<ApiResponseDto<any>> {
         const updatePayload: Partial<AppUser> = {};
 
         if (dto.first_name) updatePayload.first_name = dto.first_name;

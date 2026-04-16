@@ -1,33 +1,68 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+    Injectable,
+    BadRequestException,
+    NotFoundException,
+    ConflictException,
+    Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import {
+    Repository,
+    DataSource,
+    EntityManager,
+    LessThanOrEqual,
+    In,
+    And,
+    MoreThanOrEqual,
+    LessThan,
+} from 'typeorm';
+import { Interval } from '@nestjs/schedule';
 import { Order } from './entities/order.entity';
+import { OrderEvent } from './entities/order-event.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { MarkOrderPaidDto } from './dto/mark-order-paid.dto';
+import { CancelOrderReservationDto } from './dto/cancel-order-reservation.dto';
+import { AdminCancelOrderDto } from './dto/admin-cancel-order.dto';
+import { AdminCompleteOrderDto } from './dto/admin-complete-order.dto';
 import { Offer } from '../offers/entities/offer.entity';
 import { AppUser } from '../users/entities/app-user.entity';
-import { OrderStatus, OfferStatus } from '../../common/entities/enums/all.enums';
+import { Business } from '../businesses/entities/business.entity';
+import { OrderStatus, OfferStatus, PaymentStatus } from '../../common/entities/enums/all.enums';
 import { ConfigService } from '@nestjs/config';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { OrderResponseDto } from './dto/order-response.dto';
+import { AdminOrderResponseDto } from './dto/admin-order-response.dto';
+import {
+    ADMIN_PENDING_ORDER_STATUSES,
+    ORDER_EXPIRY_JOB_INTERVAL_SECONDS,
+    ORDER_HOLD_MINUTES,
+} from '../../config/orders.config';
 
 @Injectable()
 export class OrdersService {
+    private readonly logger = new Logger(OrdersService.name);
+    private isRestoringExpiredHolds = false;
+
     constructor(
         @InjectRepository(Order)
         private ordersRepository: Repository<Order>,
+        @InjectRepository(OrderEvent)
+        private orderEventsRepository: Repository<OrderEvent>,
+        @InjectRepository(Business)
+        private businessesRepository: Repository<Business>,
         private dataSource: DataSource,
         private configService: ConfigService,
     ) { }
 
-    async create(createOrderDto: CreateOrderDto, user: AppUser): Promise<ApiResponseDto<OrderResponseDto>> {
-        const { offer_id, quantity, pickup_time } = createOrderDto;
+
+    async reserve(createOrderDto: CreateOrderDto, user: AppUser): Promise<ApiResponseDto<OrderResponseDto>> {
+        const { offer_id, quantity } = createOrderDto;
 
         const created = await this.dataSource.transaction(async (manager: EntityManager) => {
             const offer = await manager.findOne(Offer, {
                 where: { id: offer_id },
                 lock: { mode: 'pessimistic_write' },
-                relations: ['business'],
             });
 
             if (!offer) {
@@ -42,7 +77,7 @@ export class OrdersService {
                 throw new ConflictException(DEFAULT_MESSAGES.ORDER.INSUFFICIENT_QUANTITY);
             }
 
-            const candidatePickupTime = pickup_time ? new Date(pickup_time) : offer.pickup_start;
+            const candidatePickupTime = offer.pickup_start;
             if (candidatePickupTime < offer.pickup_start || candidatePickupTime > offer.pickup_end) {
                 throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
             }
@@ -51,7 +86,7 @@ export class OrdersService {
             offer.quantity_reserved += quantity;
             await manager.save(offer);
 
-            const holdDurationMinutes = this.configService.get<number>('ORDER_HOLD_MINUTES') || 15;
+            const holdDurationMinutes = this.configService.get<number>('orders.holdMinutes') ?? ORDER_HOLD_MINUTES;
             const holdExpiresAt = new Date(Date.now() + holdDurationMinutes * 60 * 1000);
 
             const order = manager.create(Order, {
@@ -62,25 +97,363 @@ export class OrdersService {
                 offer_id: offer.id,
                 quantity,
                 unit_price_minor: offer.offer_price_minor,
-                start_price_minor: offer.original_price_minor,
-                subtotal_minor: quantity * offer.offer_price_minor,
-                total_amount_minor: quantity * offer.offer_price_minor,
-                currency_code: offer.business?.currency_code || offer.currency_code,
+                currency_code: offer.currency_code,
                 status: OrderStatus.HOLD,
                 hold_expires_at: holdExpiresAt,
                 pickup_time: candidatePickupTime,
             });
 
-            return manager.save(Order, order);
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                toStatus: OrderStatus.HOLD,
+                toPaymentStatus: PaymentStatus.PENDING,
+                actorType: 'USER',
+                actorId: user.id,
+                note: `Reserved ${quantity} item(s) for ${holdDurationMinutes} minutes.`,
+            });
+
+            return saved;
         });
 
-        const withRelations = await this.ordersRepository.findOne({
-            where: { id: created.id },
-            relations: ['offer', 'business'],
-        });
-        if (!withRelations) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${created.id}`);
+        const withRelations = await this.getOrderWithRelations(created.id);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CREATED, OrderResponseDto.fromEntity(withRelations));
+    }
+
+    async markPaid(
+        id: string,
+        userId: string,
+        markOrderPaidDto: MarkOrderPaidDto,
+    ): Promise<ApiResponseDto<OrderResponseDto>> {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOwnedOrderForUpdate(manager, id, userId);
+
+            if (order.status === OrderStatus.PAID || order.payment_status === PaymentStatus.CONFIRMED) {
+                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_PAID);
+            }
+
+            if (order.status !== OrderStatus.HOLD && order.status !== OrderStatus.PENDING_PAYMENT) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.NOT_ACTIVE_HOLD);
+            }
+
+            if (this.isHoldExpired(order)) {
+                const expired = await this.restoreExpiredHold(manager, order);
+                return { order: expired, wasExpired: true };
+            }
+
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const now = new Date();
+
+            order.status = OrderStatus.PAID;
+            order.payment_status = PaymentStatus.CONFIRMED;
+            order.confirmed_at = order.confirmed_at ?? now;
+            order.paid_at = now;
+            (order as any).hold_expires_at = null;
+            order.payment_provider = markOrderPaidDto.payment_provider ?? order.payment_provider;
+            order.payment_method = markOrderPaidDto.payment_method ?? order.payment_method;
+            order.payment_intent_id = markOrderPaidDto.payment_intent_id ?? order.payment_intent_id;
+            order.payment_transaction_id =
+                markOrderPaidDto.payment_transaction_id ?? order.payment_transaction_id;
+
+            const offer = await this.getOfferForUpdate(manager, order.offer_id);
+            offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
+            offer.total_orders += 1;
+            offer.total_revenue_minor = Number(offer.total_revenue_minor) + order.total_amount_minor;
+            await manager.save(offer);
+
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'USER',
+                actorId: userId,
+                note: 'Payment confirmed by app API.',
+            });
+
+            return { order: saved, wasExpired: false };
+        });
+
+        if (result.wasExpired) {
+            throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
+        }
+
+        const withRelations = await this.getOrderWithRelations(result.order.id);
+        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.PAID, OrderResponseDto.fromEntity(withRelations));
+    }
+
+    async cancelReservation(
+        id: string,
+        userId: string,
+        cancelOrderReservationDto: CancelOrderReservationDto,
+    ): Promise<ApiResponseDto<OrderResponseDto>> {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOwnedOrderForUpdate(manager, id, userId);
+
+            if (order.status !== OrderStatus.HOLD && order.status !== OrderStatus.PENDING_PAYMENT) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.NOT_ACTIVE_HOLD);
+            }
+
+            if (this.isHoldExpired(order)) {
+                const expired = await this.restoreExpiredHold(manager, order);
+                return { order: expired, wasExpired: true };
+            }
+
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const now = new Date();
+            const offer = await this.getOfferForUpdate(manager, order.offer_id);
+
+            this.restoreOfferQuantity(offer, order.quantity);
+            order.status = OrderStatus.CANCELLED;
+            order.cancelled_at = now;
+            order.cancellation_reason = cancelOrderReservationDto.reason ?? order.cancellation_reason;
+            (order as any).hold_expires_at = null;
+
+            await manager.save(offer);
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'USER',
+                actorId: userId,
+                note: cancelOrderReservationDto.reason ?? 'Reservation cancelled by user.',
+            });
+
+            return { order: saved, wasExpired: false };
+        });
+
+        if (result.wasExpired) {
+            throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
+        }
+
+        const withRelations = await this.getOrderWithRelations(result.order.id);
+        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CANCELLED, OrderResponseDto.fromEntity(withRelations));
+    }
+
+    async getTodayPendingOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessTodayRange(businessId);
+        const statuses =
+            this.configService.get<OrderStatus[]>('orders.adminPendingStatuses') ?? ADMIN_PENDING_ORDER_STATUSES;
+
+        const orders = await this.ordersRepository.find({
+            where: {
+                business_id: businessId,
+                status: In(statuses),
+                pickup_time: And(MoreThanOrEqual(start), LessThan(end)),
+            },
+            relations: ['user', 'business', 'offer'],
+            order: { pickup_time: 'ASC', created_at: 'ASC' },
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
+            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
+        );
+    }
+
+    async getTodayCompletedOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessTodayRange(businessId);
+
+        const orders = await this.ordersRepository.find({
+            where: {
+                business_id: businessId,
+                status: OrderStatus.COLLECTED,
+                collected_at: And(MoreThanOrEqual(start), LessThan(end)),
+            },
+            relations: ['user', 'business', 'offer'],
+            order: { collected_at: 'DESC' },
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
+            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
+        );
+    }
+
+    async getTodayCancelledOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessTodayRange(businessId);
+
+        const orders = await this.ordersRepository.find({
+            where: {
+                business_id: businessId,
+                status: OrderStatus.CANCELLED,
+                cancelled_at: And(MoreThanOrEqual(start), LessThan(end)),
+            },
+            relations: ['user', 'business', 'offer'],
+            order: { cancelled_at: 'DESC' },
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
+            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
+        );
+    }
+
+    async adminCancelOrder(
+        id: string,
+        adminCancelOrderDto: AdminCancelOrderDto,
+        actor: any,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOrderForUpdate(manager, id);
+
+            if (order.status === OrderStatus.CANCELLED) {
+                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_CANCELLED);
+            }
+
+            if (order.status === OrderStatus.COLLECTED) {
+                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_COMPLETED);
+            }
+
+            if (order.status === OrderStatus.EXPIRED || order.status === OrderStatus.NO_SHOW) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.CANNOT_CANCEL);
+            }
+
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const offer = await this.getOfferForUpdate(manager, order.offer_id);
+
+            if (order.status === OrderStatus.HOLD || order.status === OrderStatus.PENDING_PAYMENT) {
+                this.restoreOfferQuantity(offer, order.quantity);
+            } else {
+                offer.quantity_remaining += order.quantity;
+                offer.total_orders = Math.max(offer.total_orders - 1, 0);
+                offer.total_revenue_minor = Math.max(Number(offer.total_revenue_minor) - order.total_amount_minor, 0);
+            }
+
+            order.status = OrderStatus.CANCELLED;
+            order.cancelled_at = new Date();
+            order.cancellation_reason = adminCancelOrderDto.reason;
+            (order as any).hold_expires_at = null;
+
+            if (adminCancelOrderDto.refund !== false) {
+                this.applySimpleRefund(order);
+            }
+
+            await manager.save(offer);
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'STAFF',
+                actorId: actor?.id,
+                actorName: actor?.full_name ?? actor?.email,
+                note: adminCancelOrderDto.reason,
+            });
+
+            return saved;
+        });
+
+        const withRelations = await this.getAdminOrderWithRelations(result.id);
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.ADMIN_CANCELLED,
+            AdminOrderResponseDto.fromEntity(withRelations),
+        );
+    }
+
+    async adminCompleteOrder(
+        id: string,
+        adminCompleteOrderDto: AdminCompleteOrderDto,
+        actor: any,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOrderForUpdate(manager, id);
+
+            if (order.status === OrderStatus.COLLECTED) {
+                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_COMPLETED);
+            }
+
+            if (
+                order.status !== OrderStatus.PAID &&
+                order.status !== OrderStatus.CONFIRMED &&
+                order.status !== OrderStatus.READY_FOR_PICKUP
+            ) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.CANNOT_COMPLETE);
+            }
+
+            const submittedPinCode = adminCompleteOrderDto.pin_code.trim().toUpperCase();
+            if (order.pickup_code !== submittedPinCode) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.INVALID_PICKUP_CODE);
+            }
+
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const now = new Date();
+            const offer = await this.getOfferForUpdate(manager, order.offer_id);
+
+            order.status = OrderStatus.COLLECTED;
+            order.collected_at = now;
+            order.pickup_verified_at = now;
+            order.pickup_verified_by = actor?.id ?? order.pickup_verified_by;
+
+            offer.completed_orders += 1;
+            offer.total_collected_quantity += order.quantity;
+
+            await manager.save(offer);
+            await manager.increment(Business, { id: order.business_id }, 'completed_orders', 1);
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'STAFF',
+                actorId: actor?.id,
+                actorName: actor?.full_name ?? actor?.email,
+                note: 'Pickup pin code verified and order completed.',
+            });
+
+            return saved;
+        });
+
+        const withRelations = await this.getAdminOrderWithRelations(result.id);
+        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, AdminOrderResponseDto.fromEntity(withRelations));
+    }
+
+    @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
+    async restoreExpiredHoldOrders(): Promise<void> {
+        if (this.isRestoringExpiredHolds) return;
+
+        this.isRestoringExpiredHolds = true;
+        try {
+            const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
+                const expiredOrders = await manager.find(Order, {
+                    where: {
+                        status: OrderStatus.HOLD,
+                        hold_expires_at: LessThanOrEqual(new Date()),
+                    },
+                    order: { hold_expires_at: 'ASC' },
+                    take: 100,
+                    lock: { mode: 'pessimistic_write' },
+                });
+
+                for (const order of expiredOrders) {
+                    await this.restoreExpiredHold(manager, order);
+                }
+
+                return expiredOrders.length;
+            });
+
+            if (restoredCount > 0) {
+                this.logger.log(`Restored ${restoredCount} expired order hold(s).`);
+            }
+        } catch (error) {
+            this.logger.error('Failed to restore expired order holds', error instanceof Error ? error.stack : error);
+        } finally {
+            this.isRestoringExpiredHolds = false;
+        }
     }
 
     generateOrderNumber(): string {
@@ -112,5 +485,214 @@ export class OrdersService {
         if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.FETCHED, OrderResponseDto.fromEntity(order));
+    }
+
+    private async getOrderWithRelations(id: string): Promise<Order> {
+        const order = await this.ordersRepository.findOne({
+            where: { id },
+            relations: ['offer', 'business'],
+        });
+        if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
+
+        return order;
+    }
+
+    private async getAdminOrderWithRelations(id: string): Promise<Order> {
+        const order = await this.ordersRepository.findOne({
+            where: { id },
+            relations: ['user', 'offer', 'business'],
+        });
+        if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
+
+        return order;
+    }
+
+    private async getOrderForUpdate(manager: EntityManager, id: string): Promise<Order> {
+        const order = await manager.findOne(Order, {
+            where: { id },
+            lock: { mode: 'pessimistic_write' },
+        });
+        if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
+
+        return order;
+    }
+
+    private async getBusinessTodayRange(businessId: string): Promise<{ start: Date; end: Date }> {
+        const business = await this.businessesRepository.findOne({ where: { id: businessId } });
+        if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${businessId}`);
+
+        return this.getTodayRangeForTimezone(business.timezone || 'Africa/Mogadishu');
+    }
+
+    private getTodayRangeForTimezone(timezone: string): { start: Date; end: Date } {
+        const todayParts = this.getZonedDateParts(new Date(), timezone);
+        const start = this.zonedTimeToUtc(timezone, {
+            year: todayParts.year,
+            month: todayParts.month,
+            day: todayParts.day,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        });
+        const end = this.zonedTimeToUtc(timezone, {
+            year: todayParts.year,
+            month: todayParts.month,
+            day: todayParts.day + 1,
+            hour: 0,
+            minute: 0,
+            second: 0,
+        });
+
+        return { start, end };
+    }
+
+    private zonedTimeToUtc(
+        timezone: string,
+        parts: { year: number; month: number; day: number; hour: number; minute: number; second: number },
+    ): Date {
+        const utcGuess = new Date(
+            Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second),
+        );
+        const offset = this.getTimezoneOffsetMs(utcGuess, timezone);
+
+        return new Date(utcGuess.getTime() - offset);
+    }
+
+    private getTimezoneOffsetMs(date: Date, timezone: string): number {
+        const parts = this.getZonedDateParts(date, timezone);
+        const zonedAsUtc = Date.UTC(
+            parts.year,
+            parts.month - 1,
+            parts.day,
+            parts.hour,
+            parts.minute,
+            parts.second,
+        );
+
+        return zonedAsUtc - date.getTime();
+    }
+
+    private getZonedDateParts(
+        date: Date,
+        timezone: string,
+    ): { year: number; month: number; day: number; hour: number; minute: number; second: number } {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+        });
+        const parts = formatter.formatToParts(date);
+        const value = (type: Intl.DateTimeFormatPartTypes) =>
+            Number(parts.find((part) => part.type === type)?.value);
+
+        return {
+            year: value('year'),
+            month: value('month'),
+            day: value('day'),
+            hour: value('hour'),
+            minute: value('minute'),
+            second: value('second'),
+        };
+    }
+
+    private async getOwnedOrderForUpdate(
+        manager: EntityManager,
+        id: string,
+        userId: string,
+    ): Promise<Order> {
+        const order = await manager.findOne(Order, {
+            where: { id, user_id: userId },
+            lock: { mode: 'pessimistic_write' },
+        });
+        if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
+
+        return order;
+    }
+
+    private async getOfferForUpdate(manager: EntityManager, offerId: string): Promise<Offer> {
+        const offer = await manager.findOne(Offer, {
+            where: { id: offerId },
+            lock: { mode: 'pessimistic_write' },
+        });
+        if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${offerId}`);
+
+        return offer;
+    }
+
+    private isHoldExpired(order: Order): boolean {
+        return Boolean(order.hold_expires_at && order.hold_expires_at.getTime() <= Date.now());
+    }
+
+    private async restoreExpiredHold(manager: EntityManager, order: Order): Promise<Order> {
+        const previousStatus = order.status;
+        const previousPaymentStatus = order.payment_status;
+        const offer = await this.getOfferForUpdate(manager, order.offer_id);
+
+        this.restoreOfferQuantity(offer, order.quantity);
+        order.status = OrderStatus.EXPIRED;
+        order.expired_at = new Date();
+        (order as any).hold_expires_at = null;
+
+        await manager.save(offer);
+        const saved = await manager.save(Order, order);
+        await this.recordOrderEvent(manager, {
+            orderId: saved.id,
+            fromStatus: previousStatus,
+            toStatus: saved.status,
+            fromPaymentStatus: previousPaymentStatus,
+            toPaymentStatus: saved.payment_status,
+            actorType: 'SYSTEM',
+            note: 'Hold expired and reserved quantity was restored.',
+        });
+
+        return saved;
+    }
+
+    private restoreOfferQuantity(offer: Offer, quantity: number): void {
+        offer.quantity_remaining += quantity;
+        offer.quantity_reserved = Math.max(offer.quantity_reserved - quantity, 0);
+    }
+
+    private applySimpleRefund(order: Order): void {
+        if (
+            order.payment_status === PaymentStatus.CONFIRMED ||
+            order.payment_status === PaymentStatus.PROCESSING
+        ) {
+            order.payment_status = PaymentStatus.REFUNDED;
+        }
+    }
+
+    private async recordOrderEvent(
+        manager: EntityManager,
+        params: {
+            orderId: string;
+            fromStatus?: OrderStatus;
+            toStatus: OrderStatus;
+            fromPaymentStatus?: PaymentStatus;
+            toPaymentStatus?: PaymentStatus;
+            actorType: 'USER' | 'STAFF' | 'SYSTEM';
+            actorId?: string;
+            actorName?: string;
+            note?: string;
+        },
+    ): Promise<void> {
+        const event = this.orderEventsRepository.create({
+            order_id: params.orderId,
+            from_status: params.fromStatus,
+            to_status: params.toStatus,
+            from_payment_status: params.fromPaymentStatus,
+            to_payment_status: params.toPaymentStatus,
+            actor_type: params.actorType,
+            actor_id: params.actorId,
+            actor_name: params.actorName,
+            note: params.note,
+        });
+
+        await manager.save(OrderEvent, event);
     }
 }

@@ -83,7 +83,7 @@ export class AuthService {
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.OTP_VERIFIED, {
             access_token: this.jwtService.sign(payload),
-            refresh_token: this.jwtService.sign(payload, { expiresIn: '7d' }),
+            refresh_token: this.jwtService.sign(payload),
             user,
             timezone,
             timestamp: this.getTimezoneTimestamp(timezone),

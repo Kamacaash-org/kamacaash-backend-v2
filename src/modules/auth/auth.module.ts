@@ -19,7 +19,6 @@ import { Country } from '../countries/entities/country.entity';
             inject: [ConfigService],
             useFactory: async (configService: ConfigService) => ({
                 secret: configService.get<string>('JWT_SECRET') || 'your-super-secret-jwt-key',
-                signOptions: { expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '15m') as any },
             }),
         }),
     ],

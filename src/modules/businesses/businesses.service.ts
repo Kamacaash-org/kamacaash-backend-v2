@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { Business } from './entities/business.entity';
 import { CreateBusinessDto } from './dto/create-business.dto';
 import { UpdateBusinessDto } from './dto/update-business.dto';
@@ -15,8 +16,15 @@ import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
-import { BusinessVerificationStatus } from '../../common/entities/enums/all.enums';
+import { BusinessStatus, BusinessVerificationStatus, OfferStatus } from '../../common/entities/enums/all.enums';
 import { BusinessVerificationListDto } from './dto/business-verification.dto';
+import { Offer } from '../offers/entities/offer.entity';
+import { AppBusinessQueryDto } from './app/dto/app-business-query.dto';
+import {
+    AppBusinessDetailDto,
+    AppBusinessSummaryDto,
+} from './app/dto/app-business-response.dto';
+import { APP_BUSINESS_ACTIVE_OFFERS_LIMIT } from '../../config/businesses.config';
 
 type BusinessUploadFiles = {
     logo_url?: UploadedFile[];
@@ -33,8 +41,11 @@ export class BusinessesService {
         private countriesRepository: Repository<Country>,
         @InjectRepository(StaffUser)
         private staffRepository: Repository<StaffUser>,
+        @InjectRepository(Offer)
+        private offersRepository: Repository<Offer>,
         private dataSource: DataSource,
         private readonly s3UploadService: S3UploadService,
+        private readonly configService: ConfigService,
     ) { }
 
     private async getCountryOrThrow(countryCode: string): Promise<Country> {
@@ -207,6 +218,137 @@ export class BusinessesService {
             DEFAULT_MESSAGES.BUSINESS.NEARBY_FETCHED,
             businesses.map((business) => BusinessResponseDto.fromEntity(business)),
         );
+    }
+
+    async findActiveForApp(
+        queryDto: AppBusinessQueryDto,
+    ): Promise<ApiResponseDto<AppBusinessSummaryDto[]>> {
+        const { page = 1, limit = 10, order = 'DESC', search, lat, lng, radius_km } = queryDto;
+        const hasCoordinates = lat !== undefined && lng !== undefined;
+        const query = this.businessesRepository
+            .createQueryBuilder('business')
+            .leftJoinAndSelect('business.category', 'category')
+            .where('business.is_archived = :isArchived', { isArchived: false })
+            .andWhere('business.is_active = :isActive', { isActive: true })
+            .andWhere('business.status = :status', { status: BusinessStatus.ACTIVE });
+
+        if (search) {
+            query.andWhere(
+                '(business.display_name ILIKE :search OR business.short_description ILIKE :search OR category.name ILIKE :search)',
+                { search: `%${search}%` },
+            );
+        }
+
+        if (hasCoordinates) {
+            this.addDistanceSelect(query, lat, lng);
+
+            if (radius_km) {
+                query.andWhere(
+                    `ST_DWithin(
+                        business.location::geography,
+                        ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+                        :radiusMeters
+                    )`,
+                    { radiusMeters: radius_km * 1000 },
+                );
+            }
+        }
+
+        if (hasCoordinates) {
+            query.orderBy('distance_meters', 'ASC');
+            query.addOrderBy('business.is_featured', 'DESC');
+        } else {
+            query.orderBy('business.is_featured', 'DESC');
+            query.addOrderBy('business.created_at', order);
+        }
+
+        query.skip((page - 1) * limit);
+        query.take(limit);
+
+        const total = await query.getCount();
+        const { entities, raw } = await query.getRawAndEntities();
+
+        const data = entities.map((business) => {
+            const rawRow = raw.find((row) => row.business_id === business.id);
+            return AppBusinessSummaryDto.fromEntity(
+                business,
+                this.getDistanceKm(rawRow?.distance_meters),
+            );
+        });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.ACTIVE_LIST_FETCHED,
+            data,
+            { total, page, lastPage: Math.ceil(total / limit), limit },
+        );
+    }
+
+    async findOneActiveForApp(
+        id: string,
+        queryDto: AppBusinessQueryDto,
+    ): Promise<ApiResponseDto<AppBusinessDetailDto>> {
+        const hasCoordinates = queryDto.lat !== undefined && queryDto.lng !== undefined;
+        const query = this.businessesRepository
+            .createQueryBuilder('business')
+            .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.opening_hours', 'opening_hours')
+            .where('business.id = :id', { id })
+            .andWhere('business.is_archived = :isArchived', { isArchived: false })
+            .andWhere('business.is_active = :isActive', { isActive: true })
+            .andWhere('business.status = :status', { status: BusinessStatus.ACTIVE });
+
+        if (hasCoordinates) {
+            this.addDistanceSelect(query, queryDto.lat!, queryDto.lng!);
+        }
+
+        const { entities, raw } = await query.getRawAndEntities();
+        if (!entities.length) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+
+        const business = entities[0];
+        const activeOffersLimit =
+            this.configService.get<number>('businesses.appActiveOffersLimit') ??
+            APP_BUSINESS_ACTIVE_OFFERS_LIMIT;
+        const activeOffers = await this.offersRepository
+            .createQueryBuilder('offer')
+            .where('offer.business_id = :businessId', { businessId: business.id })
+            .andWhere('offer.is_archived = :isArchived', { isArchived: false })
+            .andWhere('offer.is_active = :isActive', { isActive: true })
+            .andWhere('offer.status = :status', { status: OfferStatus.PUBLISHED })
+            .andWhere('offer.quantity_remaining > 0')
+            .andWhere('offer.pickup_end >= :now', { now: new Date() })
+            .orderBy('offer.is_featured', 'DESC')
+            .addOrderBy('offer.pickup_start', 'ASC')
+            .take(activeOffersLimit)
+            .getMany();
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.ACTIVE_DETAILS_FETCHED,
+            AppBusinessDetailDto.fromEntity(
+                business,
+                activeOffers,
+                this.getDistanceKm(raw[0]?.distance_meters),
+            ),
+        );
+    }
+
+    private addDistanceSelect(query: SelectQueryBuilder<Business>, lat: number, lng: number): void {
+        query.addSelect(
+            `ST_Distance(
+                business.location::geography,
+                ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
+            )`,
+            'distance_meters',
+        );
+        query.setParameter('lat', lat);
+        query.setParameter('lng', lng);
+    }
+
+    private getDistanceKm(distanceMeters?: string | number): number | undefined {
+        if (distanceMeters === undefined || distanceMeters === null) return undefined;
+        const distance = Number(distanceMeters);
+        if (!Number.isFinite(distance)) return undefined;
+
+        return Number((distance / 1000).toFixed(2));
     }
 
     async update(
