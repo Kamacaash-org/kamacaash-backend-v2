@@ -6,7 +6,7 @@ import { OrdersService } from '../orders.service';
 import { CancelOrderReservationDto } from '../dto/cancel-order-reservation.dto';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { MarkOrderPaidDto } from '../dto/mark-order-paid.dto';
-import { OrderResponseDto } from '../dto/order-response.dto';
+import { MobileUserOrderDto, OrderResponseDto } from '../dto/order-response.dto';
 
 @ApiTags('app/orders')
 @Controller('app/orders')
@@ -48,8 +48,8 @@ export class AppOrdersController {
     }
 
     @Get()
-    @ApiOperation({ summary: 'List user orders' })
-    findAll(@Request() req): Promise<ApiResponseDto<OrderResponseDto[]>> {
+    @ApiOperation({ summary: 'List user orders (mobile)' })
+    findAll(@Request() req): Promise<ApiResponseDto<MobileUserOrderDto[]>> {
         return this.ordersService.findAll(req.user.id);
     }
 

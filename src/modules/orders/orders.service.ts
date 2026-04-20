@@ -15,6 +15,7 @@ import {
     And,
     MoreThanOrEqual,
     LessThan,
+    Not,
 } from 'typeorm';
 import { Interval } from '@nestjs/schedule';
 import { Order } from './entities/order.entity';
@@ -31,7 +32,7 @@ import { OrderStatus, OfferStatus, PaymentStatus } from '../../common/entities/e
 import { ConfigService } from '@nestjs/config';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
-import { OrderResponseDto } from './dto/order-response.dto';
+import { MobileUserOrderDto, OrderResponseDto } from './dto/order-response.dto';
 import { AdminOrderResponseDto } from './dto/admin-order-response.dto';
 import {
     ADMIN_PENDING_ORDER_STATUSES,
@@ -464,16 +465,16 @@ export class OrdersService {
         return Math.random().toString(36).substring(2, 8).toUpperCase();
     }
 
-    async findAll(userId: string): Promise<ApiResponseDto<OrderResponseDto[]>> {
+    async findAll(userId: string): Promise<ApiResponseDto<MobileUserOrderDto[]>> {
         const orders = await this.ordersRepository.find({
-            where: { user_id: userId },
+            where: { user_id: userId, status: In([OrderStatus.CONFIRMED, OrderStatus.PAID, OrderStatus.COLLECTED]) },
             relations: ['offer', 'business'],
             order: { created_at: 'DESC' },
         });
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
-            orders.map((order) => OrderResponseDto.fromEntity(order)),
+            orders.map((order) => MobileUserOrderDto.fromEntity(order)),
         );
     }
 
