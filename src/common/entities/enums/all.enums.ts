@@ -58,17 +58,35 @@ export enum OfferStatus {
     CANCELLED = 'CANCELLED',
 }
 
+// export enum OrderStatus {
+//     HOLD = 'HOLD',
+//     PENDING_PAYMENT = 'PENDING_PAYMENT',
+//     // CONFIRMED = 'CONFIRMED', --- IGNORE ---
+//     PAID = 'PAID',
+//     READY_FOR_PICKUP = 'READY_FOR_PICKUP',
+//     COLLECTED = 'COLLECTED',
+//     EXPIRED = 'EXPIRED',
+//     CANCELLED = 'CANCELLED',
+//     NO_SHOW = 'NO_SHOW',
+// }
 export enum OrderStatus {
-    HOLD = 'HOLD',
-    PENDING_PAYMENT = 'PENDING_PAYMENT',
-    CONFIRMED = 'CONFIRMED',
-    PAID = 'PAID',
-    READY_FOR_PICKUP = 'READY_FOR_PICKUP',
-    COLLECTED = 'COLLECTED',
-    EXPIRED = 'EXPIRED',
-    CANCELLED = 'CANCELLED',
-    NO_SHOW = 'NO_SHOW',
+  HOLD = 'HOLD',
+  PENDING_PAYMENT = 'PENDING_PAYMENT',
+  PAID = 'PAID',
+  READY_FOR_PICKUP = 'READY_FOR_PICKUP',
+  COLLECTED = 'COLLECTED',
+  EXPIRED = 'EXPIRED',
+  CANCELLED_BY_USER = 'CANCELLED_BY_USER',
+  CANCELLED_BY_ADMIN = 'CANCELLED_BY_ADMIN',
+  NO_SHOW = 'NO_SHOW',
+  CLOSED = 'CLOSED',
 }
+// export enum OrderClosureReason {
+//   CANCELLED_BY_USER = 'CANCELLED_BY_USER',
+//   CANCELLED_BY_ADMIN = 'CANCELLED_BY_ADMIN',
+//   EXPIRED = 'EXPIRED',
+//   NO_SHOW = 'NO_SHOW',
+// }
 
 export enum PaymentStatus {
     PENDING = 'PENDING',
@@ -80,12 +98,11 @@ export enum PaymentStatus {
 }
 
 export enum PaymentProvider {
-    EVC = 'EVC',
     JEEB = 'JEEB',
     E_DAHAB = 'E_DAHAB',
     ZAAD = 'ZAAD',
     SAHAL = 'SAHAL',
-    WAVE = 'WAVE',
+    WAAFI = 'WAAFI',
     BANK = 'BANK',
     CARD = 'CARD',
 }

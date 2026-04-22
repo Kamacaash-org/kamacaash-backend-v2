@@ -16,6 +16,81 @@ class OfferPickupWindowResponseDto {
     max_pickups_per_window?: number;
 }
 
+export class AppOfferListResponseDto {
+    @ApiProperty()
+    id: string;
+    @ApiProperty()
+    title: string;
+    @ApiProperty()
+    slug: string;
+    @ApiProperty()
+    short_description: string;
+    @ApiProperty()
+    main_image_url: string;
+    @ApiProperty()
+    currency_code: string;
+    @ApiProperty()
+    original_price_minor: number;
+    @ApiProperty()
+    offer_price_minor: number;
+    @ApiProperty()
+    discount_percentage: number;
+    @ApiProperty()
+    quantity_remaining: number;
+    @ApiProperty()
+    is_featured: boolean;
+    @ApiProperty()
+    is_limited_time: boolean;
+    @ApiProperty()
+    average_rating: number;
+    @ApiProperty()
+    total_reviews: number;
+    @ApiProperty()
+    pickup_start: Date;
+    @ApiProperty()
+    pickup_end: Date;
+    @ApiPropertyOptional()
+    business_name?: string;
+    @ApiPropertyOptional()
+    category_name?: string;
+    @ApiPropertyOptional()
+    distance_km?: number;
+
+    private static fromMinorUnits(amount: number | null | undefined): number {
+        return Number(((amount ?? 0) / 100).toFixed(2));
+    }
+
+    private static toDistanceKm(rawRow?: Record<string, any>): number {
+        if (rawRow?.distance_meters == null) return 0;
+
+        return parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2));
+    }
+
+    static fromEntity(offer: Offer, rawRow?: Record<string, any>): AppOfferListResponseDto {
+        return {
+            id: offer.id,
+            title: offer.title,
+            slug: offer.slug,
+            short_description: offer.short_description,
+            main_image_url: offer.main_image_url,
+            currency_code: offer.currency_code,
+            original_price_minor: AppOfferListResponseDto.fromMinorUnits(offer.original_price_minor),
+            offer_price_minor: AppOfferListResponseDto.fromMinorUnits(offer.offer_price_minor),
+            discount_percentage: offer.discount_percentage,
+            quantity_remaining: offer.quantity_remaining,
+            is_featured: offer.is_featured,
+            is_limited_time: offer.is_limited_time,
+            average_rating: offer.average_rating,
+            total_reviews: offer.total_reviews,
+            pickup_start: offer.pickup_start,
+            pickup_end: offer.pickup_end,
+            business_name: offer.business?.display_name,
+            category_name: offer.category?.name,
+            distance_km: AppOfferListResponseDto.toDistanceKm(rawRow),
+        };
+    }
+}
+
 export class OfferResponseDto {
     @ApiProperty()
     id: string;
@@ -27,6 +102,8 @@ export class OfferResponseDto {
     business_name?: string;
     @ApiPropertyOptional()
     category_name?: string;
+    @ApiPropertyOptional()
+    distance_km?: number;
     @ApiProperty()
     created_by_staff_id: string;
     @ApiPropertyOptional()
@@ -147,7 +224,17 @@ export class OfferResponseDto {
         }).format(date);
     }
 
-    static fromEntity(offer: Offer): OfferResponseDto {
+    private static fromMinorUnits(amount: number | null | undefined): number {
+        return Number(((amount ?? 0) / 100).toFixed(2));
+    }
+
+    private static toDistanceKm(rawRow?: Record<string, any>): number {
+        if (rawRow?.distance_meters == null) return 0;
+
+        return parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2));
+    }
+
+    static fromEntity(offer: Offer, rawRow?: Record<string, any>): OfferResponseDto {
         const timezone = (offer as any).business?.timezone;
         return {
             id: offer.id,
@@ -155,6 +242,7 @@ export class OfferResponseDto {
             business_name: (offer as any).business?.display_name,
             category_id: offer.category_id,
             category_name: (offer as any).category?.name,
+            distance_km: OfferResponseDto.toDistanceKm(rawRow),
             created_by_staff_id: offer.created_by_staff_id,
             updated_by: (offer as any).updated_by,
             archived_by: (offer as any).archived_by,
@@ -172,8 +260,8 @@ export class OfferResponseDto {
             business_timezone: timezone,
             pickup_start_local: OfferResponseDto.toLocal(offer.pickup_start, timezone),
             pickup_end_local: OfferResponseDto.toLocal(offer.pickup_end, timezone),
-            original_price_minor: offer.original_price_minor,
-            offer_price_minor: offer.offer_price_minor,
+            original_price_minor: OfferResponseDto.fromMinorUnits(offer.original_price_minor),
+            offer_price_minor: OfferResponseDto.fromMinorUnits(offer.offer_price_minor),
             discount_percentage: offer.discount_percentage,
             quantity_total: offer.quantity_total,
             quantity_remaining: offer.quantity_remaining,

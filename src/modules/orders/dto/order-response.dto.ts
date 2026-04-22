@@ -60,6 +60,10 @@ export class OrderResponseDto {
     }).format(date);
   }
 
+  private static fromMinorUnits(amount: number | null | undefined): number {
+    return Number(((amount ?? 0) / 100).toFixed(2));
+  }
+
   static fromEntity(order: Order): OrderResponseDto {
     const timezone = (order as any).business?.timezone;
     return {
@@ -70,12 +74,12 @@ export class OrderResponseDto {
       business_id: order.business_id,
       offer_id: order.offer_id,
       quantity: order.quantity,
-      unit_price_minor: order.unit_price_minor,
-      subtotal_minor: order.subtotal_minor,
-      tax_minor: order.tax_minor,
-      discount_minor: order.discount_minor,
-      total_amount_minor: order.total_amount_minor,
-      currency_code: order.currency_code,
+      unit_price_minor: OrderResponseDto.fromMinorUnits(order.unit_price_minor),
+      subtotal_minor: OrderResponseDto.fromMinorUnits(order.subtotal_minor),
+      tax_minor: OrderResponseDto.fromMinorUnits(order.tax_minor),
+      discount_minor: OrderResponseDto.fromMinorUnits(order.discount_minor),
+      total_amount_minor: OrderResponseDto.fromMinorUnits(order.total_amount_minor),
+      currency_code: order.currency_code ?? '',
       status: order.status,
       payment_status: order.payment_status,
       hold_expires_at: order.hold_expires_at,
@@ -106,14 +110,17 @@ export class MobileUserOrderDto {
   business: any;
   hasUserReviewedBusiness: boolean;
 
+  private static fromMinorUnits(amount: number | null | undefined): number {
+    return Number(((amount ?? 0) / 100).toFixed(2));
+  }
+
   static fromEntity(order: Order): MobileUserOrderDto {
     return {
       orderId: order.id,
       orderNumber: order.order_number,
       quantity: order.quantity,
 
-      // convert minor → major (e.g. cents → dollars)
-      amount: order.total_amount_minor / 100,
+      amount: MobileUserOrderDto.fromMinorUnits(order.total_amount_minor),
 
       status: order.status,
       paymentStatus: order.payment_status,

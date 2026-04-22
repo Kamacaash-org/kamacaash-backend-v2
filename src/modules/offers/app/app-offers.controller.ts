@@ -3,7 +3,7 @@ import { OffersService } from '../offers.service';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ApiResponseDto } from '../../../common/dto/api-response.dto';
-import { OfferResponseDto } from './dto/offer-response.dto';
+import { AppOfferListResponseDto, OfferResponseDto } from './dto/offer-response.dto';
 
 @ApiTags('app/offers')
 @Controller('app/offers')
@@ -22,7 +22,7 @@ export class AppOffersController {
         @Query('category_id') category_id?: string,
         @Query('lat') lat?: string,
         @Query('lng') lng?: string,
-    ): Promise<ApiResponseDto<any[]>> {
+    ): Promise<ApiResponseDto<AppOfferListResponseDto[]>> {
         return this.offersService.findAllForApp(paginationDto, { 
             business_id, 
             category_id,
@@ -39,7 +39,7 @@ export class AppOffersController {
         @Param('id') id: string,
         @Query('lat') lat?: string,
         @Query('lng') lng?: string,
-    ): Promise<ApiResponseDto<any>> {
+    ): Promise<ApiResponseDto<OfferResponseDto>> {
         return this.offersService.findOneForApp(id, {
             lat: lat ? parseFloat(lat) : undefined,
             lng: lng ? parseFloat(lng) : undefined

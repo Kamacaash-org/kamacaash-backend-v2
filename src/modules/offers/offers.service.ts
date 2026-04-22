@@ -8,6 +8,10 @@ import { PaginationDto } from '../../common/dto/pagination.dto';
 import { OfferStatus } from '../../common/entities/enums/all.enums';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { OfferResponseDto } from './admin/dto/offer-response.dto';
+import {
+    AppOfferListResponseDto,
+    OfferResponseDto as AppOfferResponseDto,
+} from './app/dto/offer-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { Business } from '../businesses/entities/business.entity';
 import { S3UploadService } from '../../common/services/s3-upload.service';
@@ -43,7 +47,7 @@ export class OffersService {
         const hasPickupWindows = parsedPickupWindows.length > 0;
 
         if (!hasPickupWindows && (!createOfferDto.pickup_start || !createOfferDto.pickup_end)) {
-            throw new BadRequestException('Provide pickup_start/pickup_end or pickup_windows');
+            throw new BadRequestException(DEFAULT_MESSAGES.OFFER.PICKUP_TIME_REQUIRED);
         }
 
         const pickupStart = hasPickupWindows
@@ -64,6 +68,8 @@ export class OffersService {
             ...createOfferDto,
             ...uploadedFileFields,
             currency_code: business.currency_code,
+            original_price_minor: this.toMinorUnits(createOfferDto.original_price_minor),
+            offer_price_minor: this.toMinorUnits(createOfferDto.offer_price_minor),
             pickup_start: pickupStart,
             pickup_end: pickupEnd,
             created_by_staff_id: currentUser?.id,
@@ -139,7 +145,7 @@ export class OffersService {
         );
     }
 
-    async findAllForApp(paginationDto: PaginationDto, queryParams?: any): Promise<ApiResponseDto<any[]>> {
+    async findAllForApp(paginationDto: PaginationDto, queryParams?: any): Promise<ApiResponseDto<AppOfferListResponseDto[]>> {
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
         const query = this.offersRepository
             .createQueryBuilder('offer')
@@ -173,30 +179,9 @@ export class OffersService {
         const total = await query.getCount();
         const { entities, raw } = await query.getRawAndEntities();
 
-        const mapped = entities.map(offer => {
-            const rawRow = raw.find((r) => r.offer_id === offer.id);
-            return {
-                id: offer.id,
-                title: offer.title,
-                slug: offer.slug,
-                short_description: offer.short_description,
-                main_image_url: offer.main_image_url,
-                currency_code: offer.currency_code,
-                original_price_minor: offer.original_price_minor,
-                offer_price_minor: offer.offer_price_minor,
-                discount_percentage: offer.discount_percentage,
-                quantity_remaining: offer.quantity_remaining,
-                is_featured: offer.is_featured,
-                is_limited_time: offer.is_limited_time,
-                average_rating: offer.average_rating,
-                total_reviews: offer.total_reviews,
-                pickup_start: offer.pickup_start,
-                pickup_end: offer.pickup_end,
-                business_name: offer.business?.display_name,
-                category_name: offer.category?.name,
-                distance_km: rawRow && rawRow.distance_meters != null ? parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2)) : 0,
-            };
-        });
+        const mapped = entities.map((offer) =>
+            AppOfferListResponseDto.fromEntity(offer, raw.find((r) => r.offer_id === offer.id)),
+        );
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.LIST_FETCHED,
@@ -205,7 +190,7 @@ export class OffersService {
         );
     }
 
-    async findOneForApp(id: string, queryParams?: { lat?: number, lng?: number }): Promise<ApiResponseDto<any>> {
+    async findOneForApp(id: string, queryParams?: { lat?: number, lng?: number }): Promise<ApiResponseDto<AppOfferResponseDto>> {
         const query = this.offersRepository
             .createQueryBuilder('offer')
             .leftJoinAndSelect('offer.business', 'business')
@@ -224,48 +209,9 @@ export class OffersService {
         const { entities, raw } = await query.getRawAndEntities();
         if (!entities.length) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
         
-        const offer = entities[0];
-        const rawRow = raw[0];
-
-        const mapped = {
-            id: offer.id,
-            title: offer.title,
-            slug: offer.slug,
-            description: offer.description,
-            short_description: offer.short_description,
-            main_image_url: offer.main_image_url,
-            gallery_images: offer.gallery_images,
-            tags: offer.tags,
-            dietary_info: offer.dietary_info,
-            allergen_info: offer.allergen_info,
-            currency_code: offer.currency_code,
-            original_price_minor: offer.original_price_minor,
-            offer_price_minor: offer.offer_price_minor,
-            discount_percentage: offer.discount_percentage,
-            quantity_remaining: offer.quantity_remaining,
-            max_per_user: offer.max_per_user,
-            is_featured: offer.is_featured,
-            is_limited_time: offer.is_limited_time,
-            average_rating: offer.average_rating,
-            total_reviews: offer.total_reviews,
-            pickup_start: offer.pickup_start,
-            pickup_end: offer.pickup_end,
-            pickup_windows: offer.pickup_windows?.map(w => ({
-                id: w.id,
-                starts_at: w.starts_at,
-                ends_at: w.ends_at,
-                max_pickups_per_window: w.max_pickups_per_window,
-            })) || [],
-            pickup_instructions: offer.pickup_instructions,
-            advance_notice_hours: offer.advance_notice_hours,
-            business_name: offer.business?.display_name,
-            category_name: offer.category?.name,
-            distance_km: rawRow && rawRow.distance_meters != null ? parseFloat((parseFloat(rawRow.distance_meters) / 1000).toFixed(2)) : 0,
-        };
-
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.FETCHED,
-            mapped,
+            AppOfferResponseDto.fromEntity(entities[0], raw[0]),
         );
     }
 
@@ -308,8 +254,12 @@ export class OffersService {
         if (updateOfferDto.allergen_info !== undefined) updatePayload.allergen_info = updateOfferDto.allergen_info;
         if (updateOfferDto.main_image_url !== undefined) updatePayload.main_image_url = updateOfferDto.main_image_url;
         if (updateOfferDto.gallery_images !== undefined) updatePayload.gallery_images = updateOfferDto.gallery_images;
-        if (updateOfferDto.original_price_minor !== undefined) updatePayload.original_price_minor = updateOfferDto.original_price_minor;
-        if (updateOfferDto.offer_price_minor !== undefined) updatePayload.offer_price_minor = updateOfferDto.offer_price_minor;
+        if (updateOfferDto.original_price_minor !== undefined) {
+            updatePayload.original_price_minor = this.toMinorUnits(updateOfferDto.original_price_minor);
+        }
+        if (updateOfferDto.offer_price_minor !== undefined) {
+            updatePayload.offer_price_minor = this.toMinorUnits(updateOfferDto.offer_price_minor);
+        }
         if (updateOfferDto.quantity_total !== undefined) updatePayload.quantity_total = updateOfferDto.quantity_total;
         if (updateOfferDto.max_per_user !== undefined) updatePayload.max_per_user = updateOfferDto.max_per_user;
         if (updateOfferDto.pickup_instructions !== undefined) updatePayload.pickup_instructions = updateOfferDto.pickup_instructions;
@@ -426,6 +376,10 @@ export class OffersService {
         }
 
         return updates;
+    }
+
+    private toMinorUnits(amount: number): number {
+        return Math.round(amount * 100);
     }
 
     private parsePickupWindows(

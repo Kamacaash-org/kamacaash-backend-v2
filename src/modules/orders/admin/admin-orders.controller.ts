@@ -12,6 +12,7 @@ import { OrdersService } from '../orders.service';
 import { AdminCancelOrderDto } from '../dto/admin-cancel-order.dto';
 import { AdminCompleteOrderDto } from '../dto/admin-complete-order.dto';
 import { AdminOrderResponseDto } from '../dto/admin-order-response.dto';
+import { AdminCloseNoShowOrderDto } from '../dto/admin-close-no-show-order.dto';
 
 @ApiTags('admin/orders')
 @Controller('admin/orders')
@@ -50,6 +51,16 @@ export class AdminOrdersController {
     return this.ordersService.getTodayCancelledOrdersByBusiness(businessId);
   }
 
+  @Get('business/:businessId/no-show/today')
+  @ApiOperation({ summary: 'Get today no-show orders by business ID' })
+  @ApiParam({ name: 'businessId', description: 'Business id' })
+  @ApiOkResponse({ type: AdminOrderResponseDto, isArray: true })
+  getTodayNoShowOrdersByBusiness(
+    @Param('businessId') businessId: string,
+  ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+    return this.ordersService.getTodayNoShowOrdersByBusiness(businessId);
+  }
+
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancel order with reason and simple refund handling' })
   @ApiParam({ name: 'id', description: 'Order id' })
@@ -72,5 +83,17 @@ export class AdminOrdersController {
     @Request() req,
   ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
     return this.ordersService.adminCompleteOrder(id, adminCompleteOrderDto, req.user);
+  }
+
+  @Patch(':id/no-show/close')
+  @ApiOperation({ summary: 'Close a no-show order, optionally restoring quantity to the offer' })
+  @ApiParam({ name: 'id', description: 'Order id' })
+  @ApiOkResponse({ type: AdminOrderResponseDto })
+  closeNoShowOrder(
+    @Param('id') id: string,
+    @Body() adminCloseNoShowOrderDto: AdminCloseNoShowOrderDto,
+    @Request() req,
+  ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+    return this.ordersService.adminCloseNoShowOrder(id, adminCloseNoShowOrderDto, req.user);
   }
 }

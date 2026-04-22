@@ -3,7 +3,7 @@ import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PaymentProvider, PayoutMethod } from '../../../common/entities/enums/all.enums';
 
 export class MarkOrderPaidDto {
-  @ApiPropertyOptional({ enum: PaymentProvider, example: PaymentProvider.EVC })
+  @ApiPropertyOptional({ enum: PaymentProvider, example: PaymentProvider.JEEB })
   @IsOptional()
   @IsEnum(PaymentProvider)
   payment_provider?: PaymentProvider;

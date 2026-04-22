@@ -32,7 +32,7 @@ export class CreateBusinessDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  owner_name: string;
+  owner_name?: string;
 
   @ApiProperty()
   @IsString()
@@ -74,7 +74,7 @@ export class CreateBusinessDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  city: string;
+  city?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -109,14 +109,14 @@ export class CreateBusinessDto {
   @IsNumber()
   @Min(-90)
   @Max(90)
-  latitude: number;
+  latitude?: number;
 
   @ApiProperty()
   @Type(() => Number)
   @IsNumber()
   @Min(-180)
   @Max(180)
-  longitude: number;
+  longitude?: number;
 
   @ApiProperty()
   @IsString()

@@ -91,6 +91,10 @@ export class AdminOrderResponseDto {
   collected_at?: Date;
 
   @ApiPropertyOptional()
+  no_show_at?: Date;
+
+
+  @ApiPropertyOptional()
   cancellation_reason?: string;
 
   @ApiProperty()
@@ -105,6 +109,10 @@ export class AdminOrderResponseDto {
   @ApiPropertyOptional({ type: AdminOrderOfferSummaryDto })
   offer?: AdminOrderOfferSummaryDto;
 
+  private static fromMinorUnits(amount: number | null | undefined): number {
+    return Number(((amount ?? 0) / 100).toFixed(2));
+  }
+
   static fromEntity(order: Order): AdminOrderResponseDto {
     return {
       id: order.id,
@@ -113,17 +121,18 @@ export class AdminOrderResponseDto {
       business_id: order.business_id,
       offer_id: order.offer_id,
       quantity: order.quantity,
-      unit_price_minor: order.unit_price_minor,
-      subtotal_minor: order.subtotal_minor,
-      tax_minor: order.tax_minor,
-      discount_minor: order.discount_minor,
-      total_amount_minor: order.total_amount_minor,
-      currency_code: order.currency_code,
+      unit_price_minor: AdminOrderResponseDto.fromMinorUnits(order.unit_price_minor),
+      subtotal_minor: AdminOrderResponseDto.fromMinorUnits(order.subtotal_minor),
+      tax_minor: AdminOrderResponseDto.fromMinorUnits(order.tax_minor),
+      discount_minor: AdminOrderResponseDto.fromMinorUnits(order.discount_minor),
+      total_amount_minor: AdminOrderResponseDto.fromMinorUnits(order.total_amount_minor),
+      currency_code: order.currency_code ?? '',
       status: order.status,
       payment_status: order.payment_status,
       pickup_time: order.pickup_time,
       cancelled_at: order.cancelled_at,
       collected_at: order.collected_at,
+      no_show_at: order.no_show_at ?? undefined,
       cancellation_reason: order.cancellation_reason,
       created_at: order.created_at,
       user: order.user

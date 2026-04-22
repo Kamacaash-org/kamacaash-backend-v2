@@ -38,12 +38,15 @@ import {
     ADMIN_PENDING_ORDER_STATUSES,
     ORDER_EXPIRY_JOB_INTERVAL_SECONDS,
     ORDER_HOLD_MINUTES,
+    ORDER_NO_SHOW_GRACE_MINUTES,
 } from '../../config/orders.config';
+import { AdminCloseNoShowOrderDto } from './dto/admin-close-no-show-order.dto';
 
 @Injectable()
 export class OrdersService {
     private readonly logger = new Logger(OrdersService.name);
     private isRestoringExpiredHolds = false;
+    private isMarkingNoShows = false;
 
     constructor(
         @InjectRepository(Order)
@@ -78,11 +81,6 @@ export class OrdersService {
                 throw new ConflictException(DEFAULT_MESSAGES.ORDER.INSUFFICIENT_QUANTITY);
             }
 
-            const candidatePickupTime = offer.pickup_start;
-            if (candidatePickupTime < offer.pickup_start || candidatePickupTime > offer.pickup_end) {
-                throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
-            }
-
             offer.quantity_remaining -= quantity;
             offer.quantity_reserved += quantity;
             await manager.save(offer);
@@ -101,7 +99,7 @@ export class OrdersService {
                 currency_code: offer.currency_code,
                 status: OrderStatus.HOLD,
                 hold_expires_at: holdExpiresAt,
-                pickup_time: candidatePickupTime,
+                pickup_time: offer.pickup_start,
             });
 
             const saved = await manager.save(Order, order);
@@ -210,9 +208,9 @@ export class OrdersService {
             const offer = await this.getOfferForUpdate(manager, order.offer_id);
 
             this.restoreOfferQuantity(offer, order.quantity);
-            order.status = OrderStatus.CANCELLED;
+            order.status = OrderStatus.CANCELLED_BY_USER;
             order.cancelled_at = now;
-            order.cancellation_reason = cancelOrderReservationDto.reason ?? order.cancellation_reason;
+            order.cancellation_reason = cancelOrderReservationDto.reason;
             (order as any).hold_expires_at = null;
 
             await manager.save(offer);
@@ -239,20 +237,24 @@ export class OrdersService {
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CANCELLED, OrderResponseDto.fromEntity(withRelations));
     }
 
+    // NOTE wait extra hours to reduce no-shows for the late pickup timeslot before restoring quantity back to the offer
     async getTodayPendingOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
         const { start, end } = await this.getBusinessTodayRange(businessId);
         const statuses =
             this.configService.get<OrderStatus[]>('orders.adminPendingStatuses') ?? ADMIN_PENDING_ORDER_STATUSES;
 
-        const orders = await this.ordersRepository.find({
-            where: {
-                business_id: businessId,
-                status: In(statuses),
-                pickup_time: And(MoreThanOrEqual(start), LessThan(end)),
-            },
-            relations: ['user', 'business', 'offer'],
-            order: { pickup_time: 'ASC', created_at: 'ASC' },
-        });
+        const orders = await this.ordersRepository
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.user', 'user')
+            .leftJoinAndSelect('order.business', 'business')
+            .leftJoinAndSelect('order.offer', 'offer')
+            .where('order.business_id = :businessId', { businessId })
+            .andWhere('order.status IN (:...statuses)', { statuses })
+            .andWhere('order.pickup_time >= :start', { start })
+            .andWhere('order.pickup_time < :end', { end })
+            .orderBy('order.pickup_time', 'ASC')
+            .addOrderBy('order.created_at', 'ASC')
+            .getMany();
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
@@ -285,12 +287,34 @@ export class OrdersService {
         const orders = await this.ordersRepository.find({
             where: {
                 business_id: businessId,
-                status: OrderStatus.CANCELLED,
+                status: OrderStatus.CANCELLED_BY_ADMIN,
                 cancelled_at: And(MoreThanOrEqual(start), LessThan(end)),
             },
             relations: ['user', 'business', 'offer'],
             order: { cancelled_at: 'DESC' },
         });
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
+            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
+        );
+    }
+
+    async getTodayNoShowOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessTodayRange(businessId);
+
+        const orders = await this.ordersRepository
+            .createQueryBuilder('order')
+            .leftJoinAndSelect('order.user', 'user')
+            .leftJoinAndSelect('order.business', 'business')
+            .leftJoinAndSelect('order.offer', 'offer')
+            .where('order.business_id = :businessId', { businessId })
+            .andWhere('order.status = :status', { status: OrderStatus.NO_SHOW })
+            .andWhere('offer.pickup_end >= :start', { start })
+            .andWhere('offer.pickup_end < :end', { end })
+            .orderBy('offer.pickup_end', 'DESC')
+            .addOrderBy('order.no_show_at', 'DESC')
+            .getMany();
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
@@ -306,15 +330,10 @@ export class OrdersService {
         const result = await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
-            if (order.status === OrderStatus.CANCELLED) {
+            if (order.status === OrderStatus.CANCELLED_BY_ADMIN || order.status === OrderStatus.CANCELLED_BY_USER) {
                 throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_CANCELLED);
             }
-
-            if (order.status === OrderStatus.COLLECTED) {
-                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_COMPLETED);
-            }
-
-            if (order.status === OrderStatus.EXPIRED || order.status === OrderStatus.NO_SHOW) {
+            if (order.status === OrderStatus.COLLECTED || order.status === OrderStatus.EXPIRED || order.status === OrderStatus.NO_SHOW) {
                 throw new BadRequestException(DEFAULT_MESSAGES.ORDER.CANNOT_CANCEL);
             }
 
@@ -330,7 +349,7 @@ export class OrdersService {
                 offer.total_revenue_minor = Math.max(Number(offer.total_revenue_minor) - order.total_amount_minor, 0);
             }
 
-            order.status = OrderStatus.CANCELLED;
+            order.status = OrderStatus.CANCELLED_BY_ADMIN;
             order.cancelled_at = new Date();
             order.cancellation_reason = adminCancelOrderDto.reason;
             (order as any).hold_expires_at = null;
@@ -377,7 +396,6 @@ export class OrdersService {
 
             if (
                 order.status !== OrderStatus.PAID &&
-                order.status !== OrderStatus.CONFIRMED &&
                 order.status !== OrderStatus.READY_FOR_PICKUP
             ) {
                 throw new BadRequestException(DEFAULT_MESSAGES.ORDER.CANNOT_COMPLETE);
@@ -423,6 +441,59 @@ export class OrdersService {
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, AdminOrderResponseDto.fromEntity(withRelations));
     }
 
+    async adminCloseNoShowOrder(
+        id: string,
+        adminCloseNoShowOrderDto: AdminCloseNoShowOrderDto,
+        actor: any,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOrderForUpdate(manager, id);
+
+            if (order.status !== OrderStatus.NO_SHOW) {
+                throw new BadRequestException(DEFAULT_MESSAGES.ORDER.NOT_NO_SHOW);
+            }
+
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const now = new Date();
+            const restoredQuantity = adminCloseNoShowOrderDto.restore_quantity === true;
+
+            if (restoredQuantity) {
+                const offer = await this.getOfferForUpdate(manager, order.offer_id);
+                this.restoreSoldOfferQuantity(offer, order.quantity, order.total_amount_minor);
+                await manager.save(offer);
+            }
+
+            order.status = OrderStatus.NO_SHOW;
+            order.cancellation_reason = adminCloseNoShowOrderDto.reason ?? order.cancellation_reason;
+
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'STAFF',
+                actorId: actor?.id,
+                actorName: actor?.full_name ?? actor?.email,
+                note:
+                    adminCloseNoShowOrderDto.reason ??
+                    (restoredQuantity
+                        ? 'No-show order closed and quantity restored to the offer.'
+                        : 'No-show order closed without restoring quantity.'),
+            });
+
+            return saved;
+        });
+
+        const withRelations = await this.getAdminOrderWithRelations(result.id);
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.NO_SHOW_CLOSED,
+            AdminOrderResponseDto.fromEntity(withRelations),
+        );
+    }
+
     @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
     async restoreExpiredHoldOrders(): Promise<void> {
         if (this.isRestoringExpiredHolds) return;
@@ -457,17 +528,55 @@ export class OrdersService {
         }
     }
 
+    @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
+    async markNoShowOrders(): Promise<void> {
+        if (this.isMarkingNoShows) return;
+
+        this.isMarkingNoShows = true;
+        try {
+            const noShowCount = await this.dataSource.transaction(async (manager: EntityManager) => {
+                const noShowGraceMinutes =
+                    this.configService.get<number>('orders.noShowGraceMinutes') ?? ORDER_NO_SHOW_GRACE_MINUTES;
+                const cutoff = new Date(Date.now() - noShowGraceMinutes * 60 * 1000);
+                const orders = await manager
+                    .createQueryBuilder(Order, 'order')
+                    .innerJoinAndSelect('order.offer', 'offer')
+                    .where('order.status IN (:...statuses)', {
+                        statuses: [OrderStatus.PAID, OrderStatus.READY_FOR_PICKUP],
+                    })
+                    .andWhere('offer.pickup_end <= :cutoff', { cutoff })
+                    .orderBy('offer.pickup_end', 'ASC')
+                    .take(100)
+                    .setLock('pessimistic_write')
+                    .getMany();
+
+                for (const order of orders) {
+                    await this.markOrderNoShow(manager, order, noShowGraceMinutes);
+                }
+
+                return orders.length;
+            });
+
+            if (noShowCount > 0) {
+                this.logger.log(`Marked ${noShowCount} order(s) as no-show.`);
+            }
+        } catch (error) {
+            this.logger.error('Failed to mark no-show orders', error instanceof Error ? error.stack : error);
+        } finally {
+            this.isMarkingNoShows = false;
+        }
+    }
+
     generateOrderNumber(): string {
-        return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        return `KAM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     }
 
-    generatePickupCode(): string {
-        return Math.random().toString(36).substring(2, 8).toUpperCase();
-    }
-
+ generatePickupCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
     async findAll(userId: string): Promise<ApiResponseDto<MobileUserOrderDto[]>> {
         const orders = await this.ordersRepository.find({
-            where: { user_id: userId, status: In([OrderStatus.CONFIRMED, OrderStatus.PAID, OrderStatus.COLLECTED]) },
+            where: { user_id: userId, status: In([OrderStatus.PAID, OrderStatus.COLLECTED, OrderStatus.NO_SHOW, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED_BY_USER]) },
             relations: ['offer', 'business'],
             order: { created_at: 'DESC' },
         });
@@ -654,9 +763,42 @@ export class OrdersService {
         return saved;
     }
 
+    private async markOrderNoShow(
+        manager: EntityManager,
+        order: Order,
+        noShowGraceMinutes: number,
+    ): Promise<Order> {
+        const previousStatus = order.status;
+        const previousPaymentStatus = order.payment_status;
+        const now = new Date();
+
+        order.status = OrderStatus.NO_SHOW;
+        order.no_show_at = now;
+
+        const saved = await manager.save(Order, order);
+        await this.recordOrderEvent(manager, {
+            orderId: saved.id,
+            fromStatus: previousStatus,
+            toStatus: saved.status,
+            fromPaymentStatus: previousPaymentStatus,
+            toPaymentStatus: saved.payment_status,
+            actorType: 'SYSTEM',
+            note: `Pickup window ended at least ${noShowGraceMinutes} minute(s) ago; order marked no-show.`,
+        });
+
+        return saved;
+    }
+
     private restoreOfferQuantity(offer: Offer, quantity: number): void {
         offer.quantity_remaining += quantity;
         offer.quantity_reserved = Math.max(offer.quantity_reserved - quantity, 0);
+    }
+
+    private restoreSoldOfferQuantity(offer: Offer, quantity: number, totalAmountMinor: number): void {
+        const maxRestorableRemaining = Math.max(offer.quantity_total - offer.quantity_reserved, 0);
+        offer.quantity_remaining = Math.min(offer.quantity_remaining + quantity, maxRestorableRemaining);
+        offer.total_orders = Math.max(offer.total_orders - 1, 0);
+        offer.total_revenue_minor = Math.max(Number(offer.total_revenue_minor) - totalAmountMinor, 0);
     }
 
     private applySimpleRefund(order: Order): void {

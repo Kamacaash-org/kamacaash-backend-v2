@@ -15,7 +15,7 @@ import {
     OrderStatus,
     PaymentStatus,
     PayoutMethod,
-    PaymentProvider,
+    PaymentProvider
 } from '../../../common/entities/enums/all.enums';
 
 @Entity('orders')
@@ -23,7 +23,7 @@ export class Order extends BaseEntity {
     @Column({ length: 50, unique: true })
     order_number: string;
 
-    @Column({ length: 10, unique: true })
+    @Column({ length: 10, unique: true})
     pickup_code: string;
 
     @Column({ type: 'uuid' })
@@ -48,11 +48,11 @@ export class Order extends BaseEntity {
     offer: Offer;
 
     @Column({ type: 'uuid', nullable: true })
-    created_by_staff_id: string;
+    created_by_staff_id?: string;
 
     @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
     @JoinColumn({ name: 'created_by_staff_id' })
-    created_by_staff: StaffUser;
+    created_by_staff?: StaffUser;
 
     @Column({ type: 'int' })
     quantity: number;
@@ -81,11 +81,12 @@ export class Order extends BaseEntity {
     total_amount_minor: number;
 
     @Column({ type: 'char', length: 3 })
-    currency_code: string;
+    currency_code?: string;
 
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.HOLD })
     status: OrderStatus;
 
+   
     @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
     payment_status: PaymentStatus;
 
@@ -112,6 +113,9 @@ export class Order extends BaseEntity {
 
     @Column({ type: 'timestamptz', nullable: true })
     expired_at: Date;
+
+    @Column({ type: 'timestamptz', nullable: true })
+    no_show_at: Date | null;
 
     @Column({ type: 'timestamptz', nullable: true })
     pickup_time: Date;
@@ -151,7 +155,7 @@ export class Order extends BaseEntity {
     special_requests: string;
 
     @Column({ type: 'text', nullable: true })
-    cancellation_reason: string;
+    cancellation_reason?: string;
 
     @Column({ type: 'timestamptz', nullable: true })
     confirmation_sent_at: Date;

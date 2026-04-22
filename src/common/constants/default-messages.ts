@@ -69,6 +69,7 @@ export const DEFAULT_MESSAGES = {
     NOT_FOUND: 'Offer not found',
     INACTIVE: 'Offer is not active',
     INVALID_PICKUP_WINDOW: 'Pickup window is invalid',
+    PICKUP_TIME_REQUIRED: 'Provide pickup_start/pickup_end or pickup_windows',
   },
   ORDER: {
     LIST_FETCHED: 'Orders fetched successfully',
@@ -78,6 +79,7 @@ export const DEFAULT_MESSAGES = {
     CANCELLED: 'Order reservation cancelled successfully',
     ADMIN_CANCELLED: 'Order cancelled successfully',
     COMPLETED: 'Order completed successfully',
+    NO_SHOW_CLOSED: 'No-show order closed successfully',
     EXPIRED_RESTORED: 'Expired order holds restored successfully',
     NOT_FOUND: 'Order not found',
     INSUFFICIENT_QUANTITY: 'Insufficient quantity remaining',
@@ -88,6 +90,7 @@ export const DEFAULT_MESSAGES = {
     ALREADY_COMPLETED: 'Order is already completed',
     CANNOT_CANCEL: 'Order cannot be cancelled',
     CANNOT_COMPLETE: 'Order cannot be completed',
+    NOT_NO_SHOW: 'Order is not in no-show state',
     INVALID_PICKUP_CODE: 'Invalid pickup pin code',
   },
   FAVORITE: {

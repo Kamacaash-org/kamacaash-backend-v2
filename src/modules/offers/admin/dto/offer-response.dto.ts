@@ -143,6 +143,10 @@ export class OfferResponseDto {
         }).format(date);
     }
 
+    private static fromMinorUnits(amount: number | null | undefined): number {
+        return Number(((amount ?? 0) / 100).toFixed(2));
+    }
+
     static fromEntity(offer: Offer): OfferResponseDto {
         const timezone = (offer as any).business?.timezone;
         return {
@@ -166,8 +170,8 @@ export class OfferResponseDto {
             business_timezone: timezone,
             pickup_start_local: OfferResponseDto.toLocal(offer.pickup_start, timezone),
             pickup_end_local: OfferResponseDto.toLocal(offer.pickup_end, timezone),
-            original_price_minor: offer.original_price_minor,
-            offer_price_minor: offer.offer_price_minor,
+            original_price_minor: OfferResponseDto.fromMinorUnits(offer.original_price_minor),
+            offer_price_minor: OfferResponseDto.fromMinorUnits(offer.offer_price_minor),
             discount_percentage: offer.discount_percentage,
             quantity_total: offer.quantity_total,
             quantity_remaining: offer.quantity_remaining,

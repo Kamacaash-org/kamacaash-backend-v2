@@ -1,3 +1,18 @@
+import { DataSource } from 'typeorm';
+import { config } from 'dotenv';
+
+config();
+
+export default new DataSource({
+    type: 'postgres',
+    url: process.env.DATABASE_URL, // ✅ use Neon URL
+    ssl: {
+        rejectUnauthorized: false, // ✅ required for Neon
+    },
+    entities: ['src/**/*.entity.ts'],
+    migrations: ['src/migrations/*.ts'],
+    synchronize: false, // ✅ for now (dev)
+});
 // import { DataSource } from 'typeorm';
 // import { config } from 'dotenv';
 // import { ConfigService } from '@nestjs/config';
@@ -20,20 +35,3 @@
 //     migrations: ['src/migrations/*.ts'],
 //     synchronize: true, // Always false for CLI/production, migrations only
 // });
-
-
-import { DataSource } from 'typeorm';
-import { config } from 'dotenv';
-
-config();
-
-export default new DataSource({
-    type: 'postgres',
-    url: process.env.DATABASE_URL, // ✅ use Neon URL
-    ssl: {
-        rejectUnauthorized: false, // ✅ required for Neon
-    },
-    entities: ['src/**/*.entity.ts'],
-    migrations: ['src/migrations/*.ts'],
-    synchronize: false, // ✅ for now (dev)
-});

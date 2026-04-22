@@ -93,13 +93,19 @@ export class CreateOfferDto {
     @IsNotEmpty()
     currency_code?: string;
 
-    @ApiProperty()
+    @ApiProperty({
+        description: 'Original price in normal money units. Example: send 12.5 for $12.50; the API stores 1250.',
+        example: 12.5,
+    })
     @Type(() => Number)
     @IsNumber()
     @Min(0)
     original_price_minor: number;
 
-    @ApiProperty()
+    @ApiProperty({
+        description: 'Offer price in normal money units. Example: send 9.99 for $9.99; the API stores 999.',
+        example: 9.99,
+    })
     @Type(() => Number)
     @IsNumber()
     @Min(0)
