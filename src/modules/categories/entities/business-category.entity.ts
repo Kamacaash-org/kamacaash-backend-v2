@@ -8,76 +8,63 @@ import {
     TreeChildren,
     TreeParent,
 } from 'typeorm';
-import { BaseEntity, BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
-import { Country } from '../../countries/entities/country.entity';
+import { BaseSoftDeleteEntity } from '../../../common/entities/base.entity';
 import { StaffUser } from '../../staff/entities/staff-user.entity';
-
 @Entity('business_categories')
-@Tree('materialized-path')
 export class BusinessCategory extends BaseSoftDeleteEntity {
-    @Column({ type: 'char', length: 2 })
-    country_code: string;
-
-    @ManyToOne(() => Country)
-    @JoinColumn({ name: 'country_code', referencedColumnName: 'iso_code_3166' })
-    country: Country;
 
     @Column({ length: 100 })
-    name: string;
+    name!: string;
 
     @Column({ length: 100 })
-    slug: string;
+    slug!: string;
 
     @Column({ type: 'text', nullable: true })
-    description: string;
+    description!: string;
 
     @Column({ type: 'text', nullable: true })
-    icon_url: string;
+    icon_url!: string;
 
     @Column({ type: 'text', nullable: true })
-    image_url: string;
+    image_url!: string;
 
     @TreeParent()
-    parent: BusinessCategory;
-
-    @TreeChildren()
-    children: BusinessCategory[];
+    parent!: BusinessCategory;
 
     @Column({ type: 'int', default: 0 })
-    sort_order: number;
-
+    sort_order!: number;
 
     @Column({ type: 'uuid', nullable: true })
-    created_by: string;
+    created_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'created_by' })
-    creator: StaffUser;
+    creator?: StaffUser;
 
 
     @Column({ type: 'uuid', nullable: true })
-    updated_by: string;
+    updated_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'updated_by' })
-    updater: StaffUser;
+    updater?: StaffUser;
 
     @Column({ default: false })
-    is_archived: boolean;
+    is_archived?: boolean;
 
     @Column({ type: 'uuid', nullable: true })
-    archived_by: string;
+    archived_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'archived_by' })
-    archiver: StaffUser;
+    archiver?: StaffUser;
 
     @Column({ type: 'timestamptz', nullable: true })
-    archived_at: Date;
+    archived_at?: Date;
 
     @Column({ default: true })
-    is_active: boolean;
+    is_active!: boolean;
 
     @Column({ default: false })
-    is_featured: boolean;
+    is_featured!: boolean;
 }

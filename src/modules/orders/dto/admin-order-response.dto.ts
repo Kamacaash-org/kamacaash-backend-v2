@@ -23,8 +23,6 @@ class AdminOrderBusinessSummaryDto {
   @ApiProperty()
   display_name: string;
 
-  @ApiProperty()
-  timezone: string;
 }
 
 class AdminOrderOfferSummaryDto {
@@ -137,25 +135,24 @@ export class AdminOrderResponseDto {
       created_at: order.created_at,
       user: order.user
         ? {
-            id: order.user.id,
-            full_name: order.user.full_name,
-            phone_e164: order.user.phone_e164,
-            email: order.user.email,
-          }
+          id: order.user.id,
+          full_name: order.user.full_name,
+          phone_e164: order.user.phone_e164,
+          email: order.user.email,
+        }
         : undefined,
       business: order.business
         ? {
-            id: order.business.id,
-            display_name: order.business.display_name,
-            timezone: order.business.timezone,
-          }
+          id: order.business.id,
+          display_name: order.business.display_name
+        }
         : undefined,
       offer: order.offer
         ? {
-            id: order.offer.id,
-            title: order.offer.title,
-            main_image_url: order.offer.main_image_url,
-          }
+          id: order.offer.id,
+          title: order.offer.title,
+          main_image_url: order.offer.main_image_url,
+        }
         : undefined,
     };
   }

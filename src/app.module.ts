@@ -12,6 +12,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { StaffModule } from './modules/staff/staff.module';
 import { CountriesModule } from './modules/countries/countries.module';
+import { CitiesModule } from './modules/cities/cities.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
 import { BusinessContractModule } from './modules/businesses/BusinessContract.module';
@@ -44,6 +45,7 @@ import { AdminModule } from './modules/admin/admin.module';
     UsersModule,
     StaffModule,
     CountriesModule,
+    CitiesModule,
     CategoriesModule,
     BusinessesModule,
     BusinessContractModule,

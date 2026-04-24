@@ -73,7 +73,7 @@ export class OrdersService {
                 throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${offer_id}`);
             }
 
-            if (offer.status !== OfferStatus.PUBLISHED || !offer.is_active) {
+            if (offer.status !== OfferStatus.PUBLISHED) {
                 throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INACTIVE);
             }
 
@@ -96,7 +96,6 @@ export class OrdersService {
                 offer_id: offer.id,
                 quantity,
                 unit_price_minor: offer.offer_price_minor,
-                currency_code: offer.currency_code,
                 status: OrderStatus.HOLD,
                 hold_expires_at: holdExpiresAt,
                 pickup_time: offer.pickup_start,
@@ -158,8 +157,6 @@ export class OrdersService {
 
             const offer = await this.getOfferForUpdate(manager, order.offer_id);
             offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
-            offer.total_orders += 1;
-            offer.total_revenue_minor = Number(offer.total_revenue_minor) + order.total_amount_minor;
             await manager.save(offer);
 
             const saved = await manager.save(Order, order);
@@ -345,8 +342,6 @@ export class OrdersService {
                 this.restoreOfferQuantity(offer, order.quantity);
             } else {
                 offer.quantity_remaining += order.quantity;
-                offer.total_orders = Math.max(offer.total_orders - 1, 0);
-                offer.total_revenue_minor = Math.max(Number(offer.total_revenue_minor) - order.total_amount_minor, 0);
             }
 
             order.status = OrderStatus.CANCELLED_BY_ADMIN;
@@ -415,9 +410,6 @@ export class OrdersService {
             order.collected_at = now;
             order.pickup_verified_at = now;
             order.pickup_verified_by = actor?.id ?? order.pickup_verified_by;
-
-            offer.completed_orders += 1;
-            offer.total_collected_quantity += order.quantity;
 
             await manager.save(offer);
             await manager.increment(Business, { id: order.business_id }, 'completed_orders', 1);
@@ -494,86 +486,86 @@ export class OrdersService {
         );
     }
 
-    @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
-    async restoreExpiredHoldOrders(): Promise<void> {
-        if (this.isRestoringExpiredHolds) return;
+    // @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
+    // async restoreExpiredHoldOrders(): Promise<void> {
+    //     if (this.isRestoringExpiredHolds) return;
 
-        this.isRestoringExpiredHolds = true;
-        try {
-            const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
-                const expiredOrders = await manager.find(Order, {
-                    where: {
-                        status: OrderStatus.HOLD,
-                        hold_expires_at: LessThanOrEqual(new Date()),
-                    },
-                    order: { hold_expires_at: 'ASC' },
-                    take: 100,
-                    lock: { mode: 'pessimistic_write' },
-                });
+    //     this.isRestoringExpiredHolds = true;
+    //     try {
+    //         const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
+    //             const expiredOrders = await manager.find(Order, {
+    //                 where: {
+    //                     status: OrderStatus.HOLD,
+    //                     hold_expires_at: LessThanOrEqual(new Date()),
+    //                 },
+    //                 order: { hold_expires_at: 'ASC' },
+    //                 take: 100,
+    //                 lock: { mode: 'pessimistic_write' },
+    //             });
 
-                for (const order of expiredOrders) {
-                    await this.restoreExpiredHold(manager, order);
-                }
+    //             for (const order of expiredOrders) {
+    //                 await this.restoreExpiredHold(manager, order);
+    //             }
 
-                return expiredOrders.length;
-            });
+    //             return expiredOrders.length;
+    //         });
 
-            if (restoredCount > 0) {
-                this.logger.log(`Restored ${restoredCount} expired order hold(s).`);
-            }
-        } catch (error) {
-            this.logger.error('Failed to restore expired order holds', error instanceof Error ? error.stack : error);
-        } finally {
-            this.isRestoringExpiredHolds = false;
-        }
-    }
+    //         if (restoredCount > 0) {
+    //             this.logger.log(`Restored ${restoredCount} expired order hold(s).`);
+    //         }
+    //     } catch (error) {
+    //         this.logger.error('Failed to restore expired order holds', error instanceof Error ? error.stack : error);
+    //     } finally {
+    //         this.isRestoringExpiredHolds = false;
+    //     }
+    // }
 
-    @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
-    async markNoShowOrders(): Promise<void> {
-        if (this.isMarkingNoShows) return;
+    // @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
+    // async markNoShowOrders(): Promise<void> {
+    //     if (this.isMarkingNoShows) return;
 
-        this.isMarkingNoShows = true;
-        try {
-            const noShowCount = await this.dataSource.transaction(async (manager: EntityManager) => {
-                const noShowGraceMinutes =
-                    this.configService.get<number>('orders.noShowGraceMinutes') ?? ORDER_NO_SHOW_GRACE_MINUTES;
-                const cutoff = new Date(Date.now() - noShowGraceMinutes * 60 * 1000);
-                const orders = await manager
-                    .createQueryBuilder(Order, 'order')
-                    .innerJoinAndSelect('order.offer', 'offer')
-                    .where('order.status IN (:...statuses)', {
-                        statuses: [OrderStatus.PAID, OrderStatus.READY_FOR_PICKUP],
-                    })
-                    .andWhere('offer.pickup_end <= :cutoff', { cutoff })
-                    .orderBy('offer.pickup_end', 'ASC')
-                    .take(100)
-                    .setLock('pessimistic_write')
-                    .getMany();
+    //     this.isMarkingNoShows = true;
+    //     try {
+    //         const noShowCount = await this.dataSource.transaction(async (manager: EntityManager) => {
+    //             const noShowGraceMinutes =
+    //                 this.configService.get<number>('orders.noShowGraceMinutes') ?? ORDER_NO_SHOW_GRACE_MINUTES;
+    //             const cutoff = new Date(Date.now() - noShowGraceMinutes * 60 * 1000);
+    //             const orders = await manager
+    //                 .createQueryBuilder(Order, 'order')
+    //                 .innerJoinAndSelect('order.offer', 'offer')
+    //                 .where('order.status IN (:...statuses)', {
+    //                     statuses: [OrderStatus.PAID, OrderStatus.READY_FOR_PICKUP],
+    //                 })
+    //                 .andWhere('offer.pickup_end <= :cutoff', { cutoff })
+    //                 .orderBy('offer.pickup_end', 'ASC')
+    //                 .take(100)
+    //                 .setLock('pessimistic_write')
+    //                 .getMany();
 
-                for (const order of orders) {
-                    await this.markOrderNoShow(manager, order, noShowGraceMinutes);
-                }
+    //             for (const order of orders) {
+    //                 await this.markOrderNoShow(manager, order, noShowGraceMinutes);
+    //             }
 
-                return orders.length;
-            });
+    //             return orders.length;
+    //         });
 
-            if (noShowCount > 0) {
-                this.logger.log(`Marked ${noShowCount} order(s) as no-show.`);
-            }
-        } catch (error) {
-            this.logger.error('Failed to mark no-show orders', error instanceof Error ? error.stack : error);
-        } finally {
-            this.isMarkingNoShows = false;
-        }
-    }
+    //         if (noShowCount > 0) {
+    //             this.logger.log(`Marked ${noShowCount} order(s) as no-show.`);
+    //         }
+    //     } catch (error) {
+    //         this.logger.error('Failed to mark no-show orders', error instanceof Error ? error.stack : error);
+    //     } finally {
+    //         this.isMarkingNoShows = false;
+    //     }
+    // }
 
     generateOrderNumber(): string {
         return `KAM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     }
 
- generatePickupCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+    generatePickupCode(): string {
+        return Math.floor(100000 + Math.random() * 900000).toString();
+    }
     async findAll(userId: string): Promise<ApiResponseDto<MobileUserOrderDto[]>> {
         const orders = await this.ordersRepository.find({
             where: { user_id: userId, status: In([OrderStatus.PAID, OrderStatus.COLLECTED, OrderStatus.NO_SHOW, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED_BY_USER]) },
@@ -631,7 +623,7 @@ export class OrdersService {
         const business = await this.businessesRepository.findOne({ where: { id: businessId } });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${businessId}`);
 
-        return this.getTodayRangeForTimezone(business.timezone || 'Africa/Mogadishu');
+        return this.getTodayRangeForTimezone('Africa/Mogadishu');
     }
 
     private getTodayRangeForTimezone(timezone: string): { start: Date; end: Date } {
@@ -797,8 +789,6 @@ export class OrdersService {
     private restoreSoldOfferQuantity(offer: Offer, quantity: number, totalAmountMinor: number): void {
         const maxRestorableRemaining = Math.max(offer.quantity_total - offer.quantity_reserved, 0);
         offer.quantity_remaining = Math.min(offer.quantity_remaining + quantity, maxRestorableRemaining);
-        offer.total_orders = Math.max(offer.total_orders - 1, 0);
-        offer.total_revenue_minor = Math.max(Number(offer.total_revenue_minor) - totalAmountMinor, 0);
     }
 
     private applySimpleRefund(order: Order): void {

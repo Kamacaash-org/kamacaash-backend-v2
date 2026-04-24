@@ -16,130 +16,92 @@ import {
     BusinessStatus,
     BusinessVerificationStatus,
 } from '../../../common/entities/enums/all.enums';
-import { BusinessBankAccount } from './business-bank-account.entity';
-import { BusinessOpeningHours } from './business-opening-hours.entity';
+import { City } from 'src/modules/cities/entities/city.entity';
 
 @Entity('businesses')
 export class Business extends BaseSoftDeleteEntity {
     @Column({ length: 255 })
-    owner_name: string;
+    legal_name!: string;
 
     @Column({ length: 255 })
-    legal_name: string;
-
-    @Column({ length: 255 })
-    display_name: string;
-
-    @Column({ length: 255 })
-    slug: string;
+    display_name!: string;
 
     @Column({ type: 'uuid' })
-    category_id: string;
+    category_id!: string;
 
     @ManyToOne(() => BusinessCategory)
     @JoinColumn({ name: 'category_id' })
-    category: BusinessCategory;
-
-    @Column({ type: 'uuid', array: true, default: [] })
-    subcategories: string[];
-
-    @Column({ type: 'text', array: true, default: [] })
-    tags: string[];
-
+    category!: BusinessCategory;
 
     @Column({ type: 'uuid', nullable: true })
-    primary_staff_id: string;
+    primary_staff_id!: string;
 
     @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
     @JoinColumn({ name: 'primary_staff_id' })
-    primary_staff: StaffUser;
+    primary_staff!: StaffUser;
 
-    @Column({ type: 'char', length: 2 })
-    country_code: string;
+    @Column({ type: 'uuid', nullable: true })
+    city_id?: string;
 
-    @ManyToOne(() => Country)
-    @JoinColumn({ name: 'country_code', referencedColumnName: 'iso_code_3166' })
-    country: Country;
-
-    @Column({ length: 100 })
-    city: string;
-
-    @Column({ length: 100, nullable: true })
-    region: string;
-
-    @Column({ length: 100, nullable: true })
-    district: string;
+    @ManyToOne(() => City)
+    @JoinColumn({ name: 'city_id', referencedColumnName: 'id' })
+    city!: City;
 
     @Column({ type: 'text', nullable: true })
-    address_line1: string;
-
-    @Column({ type: 'text', nullable: true })
-    address_line2: string;
-
-    @Column({ length: 20, nullable: true })
-    postal_code: string;
+    address_line?: string;
 
     @Column({
         type: 'geography',
         spatialFeatureType: 'Point',
         srid: 4326,
     })
-    location: any;
+    location?: any;
 
     @Column({ length: 50 })
-    phone_e164: string;
+    phone!: string;
 
     @Column({ length: 50, nullable: true })
-    secondary_phone: string;
+    secondary_phone?: string;
 
     @Column({ length: 255, nullable: true })
-    email: string;
+    email?: string;
 
     @Column({ length: 255, nullable: true })
-    website_url: string;
+    website_url?: string;
 
     @Column({ type: 'jsonb', default: {} })
-    social_links: Record<string, string>;
+    social_links?: Record<string, string>;
 
     @Column({ type: 'text', nullable: true })
-    logo_url: string;
+    logo_url!: string;
 
     @Column({ type: 'text', nullable: true })
-    banner_url: string;
+    banner_url!: string;
 
     @Column({ type: 'text', array: true, default: [] })
-    gallery_images: string[];
+    gallery_images!: string[];
 
     @Column({ type: 'text', nullable: true })
-    description: string;
+    description!: string;
 
     @Column({ length: 500, nullable: true })
-    short_description: string;
+    short_description!: string;
 
     @Column({ length: 100, nullable: true })
-    registration_number: string;
-
-    @Column({ length: 100, nullable: true })
-    tax_id: string;
+    SQN?: string;
 
     @Column({ type: 'text', nullable: true })
-    license_document_url: string;
+    license_document_url!: string;
 
-    @Column({ type: 'char', length: 3, default: 'USD' })
-    currency_code: string;
-
-    @Column({ length: 50, default: 'Africa/Mogadishu' })
-    timezone: string;
-
-    @Column({ length: 10, default: 'en' })
-    default_language: string;
+    @Column({ type: 'text', nullable: true })
+    contract_document_url!: string;
 
     @Column({
         type: 'enum',
         enum: BusinessVerificationStatus,
-        default: BusinessVerificationStatus.UNVERIFIED,
+        default: BusinessVerificationStatus.PENDING,
     })
-    verification_status: BusinessVerificationStatus;
+    verification_status!: BusinessVerificationStatus;
 
     @Column({ type: 'timestamptz', nullable: true })
     verification_submitted_at?: Date;
@@ -157,9 +119,9 @@ export class Business extends BaseSoftDeleteEntity {
     @Column({ type: 'text', nullable: true })
     verification_rejection_reason?: string;
 
-
     @Column({ type: "uuid", nullable: true })
     rejected_by_admin_id?: string;
+
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'rejected_by_admin_id' })
     rejecter?: StaffUser;
@@ -172,95 +134,57 @@ export class Business extends BaseSoftDeleteEntity {
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'verified_by_admin_id' })
-    verified_by_admin: StaffUser;
-
+    verified_by_admin!: StaffUser;
 
     @Column({
         type: 'enum',
         enum: BusinessStatus,
         default: BusinessStatus.ACTIVE,
     })
-    status: BusinessStatus;
-
-    @Column({ default: true })
-    is_active: boolean;
+    status!: BusinessStatus;
 
     @Column({ default: false })
-    is_archived: boolean;
+    is_archived!: boolean;
 
     @Column({ type: 'uuid', nullable: true })
-    archived_by: string;
+    archived_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'archived_by' })
-    archiver: StaffUser;
+    archiver!: StaffUser;
 
     @Column({ type: 'timestamptz', nullable: true })
-    archived_at: Date;
+    archived_at!: Date;
 
     @Column({ type: 'uuid', nullable: true })
-    created_by: string;
+    created_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'created_by' })
-    creator: StaffUser;
+    creator!: StaffUser;
 
     @Column({ type: 'uuid', nullable: true })
-    updated_by: string;
+    updated_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'updated_by' })
-    updater: StaffUser;
-
-    @OneToOne(() => BusinessBankAccount, (bank) => bank.business, { cascade: true })
-    bank_account: BusinessBankAccount;
-
-    @OneToMany(() => BusinessOpeningHours, (hour) => hour.business, {
-        cascade: true,
-        orphanedRowAction: 'delete',
-    })
-    opening_hours: BusinessOpeningHours[];
+    updater!: StaffUser;
 
     @Column({ default: false })
-    is_featured: boolean;
+    is_featured!: boolean;
 
     @Column({ type: 'timestamptz', nullable: true })
-    featured_until: Date;
-
-    // Statistics
-    @Column({ type: 'int', default: 0 })
-    total_offers: number;
-
-    @Column({ type: 'int', default: 0 })
-    active_offers: number;
-
-    @Column({ type: 'int', default: 0 })
-    total_orders: number;
-
-    @Column({ type: 'int', default: 0 })
-    completed_orders: number;
-
-    @Column({ type: 'bigint', default: 0 })
-    total_revenue_minor: number;
-
-    @Column({ type: 'decimal', precision: 3, scale: 2, default: 0 })
-    average_rating: number;
-
-    @Column({ type: 'int', default: 0 })
-    total_reviews: number;
-
-    @Column({ type: 'int', default: 0 })
-    total_favorites: number;
-
-    @Column({ type: 'jsonb', default: {} })
-    business_hours: Record<string, any[]>;
+    featured_until!: Date;
 
     @Column({ type: 'jsonb', default: [] })
-    holiday_hours: any[];
-
-    @Column({ type: 'jsonb', default: {} })
-    settings: Record<string, any>;
+    merchant_accounts!: {
+        merchantHolderName: string;
+        merchantNumber: string;
+        merchantProvider: string;
+        isActive: boolean;
+        isVerified: boolean;
+    }[];
 
     @Column({ type: 'text', nullable: true })
-    notes: string;
+    notes!: string;
 }

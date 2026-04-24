@@ -15,12 +15,12 @@ export class CreateCategoryDto {
   @ApiProperty({ example: 'Bakery' })
   @IsString()
   @Length(1, 100)
-  name: string;
+  name!: string;
 
   @ApiProperty({ example: 'bakery' })
   @IsString()
   @Length(1, 100)
-  slug: string;
+  slug!: string;
 
   @ApiPropertyOptional({ example: 'Fresh baked goods' })
   @IsOptional()
@@ -37,10 +37,6 @@ export class CreateCategoryDto {
   @IsString()
   image_url?: string;
 
-  @ApiPropertyOptional({ example: 'parent-category-uuid' })
-  @IsOptional()
-  // @IsUUID()
-  parent_id?: string;
 
   @ApiPropertyOptional({ example: 0, default: 0 })
   @IsOptional()

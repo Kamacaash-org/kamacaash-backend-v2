@@ -4,35 +4,35 @@ import { Order } from '../entities/order.entity';
 
 export class OrderResponseDto {
   @ApiProperty()
-  id: string;
+  id!: string;
   @ApiProperty()
-  order_number: string;
+  order_number!: string;
   @ApiProperty()
-  pickup_code: string;
+  pickup_code!: string;
   @ApiProperty()
-  user_id: string;
+  user_id!: string;
   @ApiProperty()
-  business_id: string;
+  business_id!: string;
   @ApiProperty()
-  offer_id: string;
+  offer_id!: string;
   @ApiProperty()
-  quantity: number;
+  quantity!: number;
   @ApiProperty()
-  unit_price_minor: number;
+  unit_price_minor!: number;
   @ApiProperty()
-  subtotal_minor: number;
+  subtotal_minor!: number;
   @ApiProperty()
-  tax_minor: number;
+  tax_minor!: number;
   @ApiProperty()
-  discount_minor: number;
+  discount_minor!: number;
   @ApiProperty()
-  total_amount_minor: number;
+  total_amount_minor!: number;
   @ApiProperty()
-  currency_code: string;
+  currency_code!: string;
   @ApiProperty({ enum: OrderStatus })
-  status: OrderStatus;
+  status!: OrderStatus;
   @ApiProperty({ enum: PaymentStatus })
-  payment_status: PaymentStatus;
+  payment_status!: PaymentStatus;
   @ApiPropertyOptional()
   hold_expires_at?: Date;
   @ApiPropertyOptional()
@@ -44,7 +44,7 @@ export class OrderResponseDto {
   @ApiPropertyOptional()
   pickup_time_local?: string;
   @ApiProperty()
-  created_at: Date;
+  created_at!: Date;
 
   private static toLocal(date: Date | null | undefined, timezone?: string): string | undefined {
     if (!date || !timezone) return undefined;
@@ -95,20 +95,20 @@ export class OrderResponseDto {
 
 
 export class MobileUserOrderDto {
-  orderId: string;
-  orderNumber: string;
-  quantity: number;
-  amount: number;
-  status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  reservedAt: string;
+  orderId!: string;
+  orderNumber!: string | undefined;
+  quantity!: number;
+  amount!: number;
+  status!: OrderStatus;
+  paymentStatus!: PaymentStatus;
+  reservedAt!: string;
   completedAt?: string;
-  pinCode: string;
-  paymentMethod: string;
-  cancellationReason: string;
-  package: any;
-  business: any;
-  hasUserReviewedBusiness: boolean;
+  pinCode!: string;
+  paymentMethod!: string;
+  cancellationReason!: string;
+  package!: any;
+  business!: any;
+  hasUserReviewedBusiness!: boolean;
 
   private static fromMinorUnits(amount: number | null | undefined): number {
     return Number(((amount ?? 0) / 100).toFixed(2));

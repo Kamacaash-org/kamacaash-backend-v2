@@ -11,11 +11,7 @@ import { BusinessResponseDto } from './dto/business-response.dto';
 import { Country } from '../countries/entities/country.entity';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffUser } from '../staff/entities/staff-user.entity';
-import { BusinessOpeningHours } from './entities/business-opening-hours.entity';
-import { BusinessBankAccount } from './entities/business-bank-account.entity';
 import { DataSource } from 'typeorm';
-import { S3UploadService } from '../../common/services/s3-upload.service';
-import { UploadedFile } from '../../common/types/uploaded-file.type';
 import { BusinessStatus, BusinessVerificationStatus, OfferStatus } from '../../common/entities/enums/all.enums';
 import { BusinessVerificationListDto } from './dto/business-verification.dto';
 import { Offer } from '../offers/entities/offer.entity';
@@ -25,121 +21,59 @@ import {
     AppBusinessSummaryDto,
 } from './app/dto/app-business-response.dto';
 import { APP_BUSINESS_ACTIVE_OFFERS_LIMIT } from '../../config/businesses.config';
-
-type BusinessUploadFiles = {
-    logo_url?: UploadedFile[];
-    banner_url?: UploadedFile[];
-    license_document_url?: UploadedFile[];
-    gallery_images?: UploadedFile[];
-};
+import { ToggleBusinessStatusDto } from './dto/toggle-business-status.dto';
 @Injectable()
 export class BusinessesService {
     constructor(
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
         @InjectRepository(Country)
-        private countriesRepository: Repository<Country>,
-        @InjectRepository(StaffUser)
-        private staffRepository: Repository<StaffUser>,
         @InjectRepository(Offer)
         private offersRepository: Repository<Offer>,
         private dataSource: DataSource,
-        private readonly s3UploadService: S3UploadService,
         private readonly configService: ConfigService,
     ) { }
 
-    private async getCountryOrThrow(countryCode: string): Promise<Country> {
-        const code = countryCode.toUpperCase();
-        const country = await this.countriesRepository.findOne({ where: { iso_code_3166: code } });
-        if (!country) throw new NotFoundException(`${DEFAULT_MESSAGES.COUNTRY.NOT_FOUND}: ${code}`);
-        return country;
+    private normalizeMerchantAccounts(
+        merchantAccounts?: CreateBusinessDto['merchant_accounts'],
+    ): Business['merchant_accounts'] | undefined {
+        if (!merchantAccounts) return undefined;
+
+        return merchantAccounts.map((account) => ({
+            merchantHolderName: account.merchantHolderName,
+            merchantNumber: account.merchantAccountNumber,
+            merchantProvider: account.merchantBankCode,
+            isActive: true,
+            isVerified: false,
+        }));
     }
 
-    private generateSlug(name: string): string {
-        return name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)+/g, '');
-    }
 
     async create(
         createBusinessDto: CreateBusinessDto,
         currentUser: any,
-        files?: BusinessUploadFiles,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
 
         return await this.dataSource.transaction(async (manager) => {
-            const fileUpdates = await this.buildBusinessFileUpdates(files);
-            const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
-            const mergedDto = { ...createBusinessDto, ...uploadedFileFields };
-            const verificationStatus = uploadedFileFields.license_document_url
-                ? BusinessVerificationStatus.PENDING
-                : BusinessVerificationStatus.UNVERIFIED;
-
-            const verification_submitted_at = uploadedFileFields.license_document_url
-                ? new Date()
-                : undefined;
             const {
                 latitude,
                 longitude,
-                opening_hours,
-                bank_account,
                 ...rest
-            } = mergedDto;
-
-            const country = await this.getCountryOrThrow(currentUser.country_code);
+            } = createBusinessDto;
 
             const business = manager.create(Business, {
                 ...rest,
-                verification_status: verificationStatus,
-                verification_submitted_at,
-                country_code: country.iso_code_3166,
-                currency_code: country.currency_code,
-                timezone: country.default_timezone,
-                default_language: country.default_language,
+                verification_status: BusinessVerificationStatus.PENDING,
                 created_by: currentUser.id,
+                merchant_accounts: this.normalizeMerchantAccounts(createBusinessDto.merchant_accounts),
                 location: {
                     type: 'Point',
                     coordinates: [longitude, latitude],
-                },
-                slug: this.generateSlug(rest.display_name),
+                }
             });
 
             const created = await manager.save(business);
 
-            /*
-            ─────────────────────────────
-            CREATE OPENING HOURS
-            ─────────────────────────────
-            */
-
-            if (opening_hours?.length) {
-                const hoursEntities = opening_hours.map((h) =>
-                    manager.create(BusinessOpeningHours, {
-                        business_id: created.id,
-                        day_of_week: h.day_of_week,
-                        opens_at: h.opens_at,
-                        closes_at: h.closes_at,
-                    }),
-                );
-
-                await manager.save(hoursEntities);
-            }
-
-            /*
-            ─────────────────────────────
-            CREATE BANK ACCOUNT
-            ─────────────────────────────
-            */
-
-            if (bank_account) {
-                const bank = manager.create(BusinessBankAccount, {
-                    ...bank_account,
-                    business_id: created.id,
-                });
-
-                await manager.save(bank);
-            }
 
             /*
             ─────────────────────────────
@@ -163,10 +97,46 @@ export class BusinessesService {
     async findAll(paginationDto: PaginationDto): Promise<ApiResponseDto<BusinessResponseDto[]>> {
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
 
-        const query = this.businessesRepository.createQueryBuilder('business')
-            .leftJoinAndSelect('business.bank_account', 'bank_account')
-            .leftJoinAndSelect('business.opening_hours', 'opening_hours')
+        const query = this.businessesRepository
+            .createQueryBuilder('business')
+            .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.city', 'city')
+            .leftJoinAndSelect('business.primary_staff', 'staff')
             .where('business.is_archived = :isArchived', { isArchived: false });
+
+        query.select([
+            'business.id',
+            'business.legal_name',
+            'business.display_name',
+            'business.category_id',
+            'business.primary_staff_id',
+            'business.city_id',
+            'business.address_line',
+            'business.location',
+            'business.phone',
+            'business.secondary_phone',
+            'business.email',
+            'business.website_url',
+            'business.social_links',
+            'business.logo_url',
+            'business.banner_url',
+            'business.gallery_images',
+            'business.description',
+            'business.short_description',
+            'business.status',
+            'business.is_archived',
+            'business.is_featured',
+            'business.featured_until',
+            'business.notes',
+            'business.created_at',
+            'business.updated_at',
+            'business.deleted_at',
+            'business.merchant_accounts',
+            'category.name',
+            'city.name',
+            'staff.first_name',
+            'staff.last_name',
+        ]);
 
         if (search) {
             query.andWhere('business.display_name ILIKE :search OR business.description ILIKE :search', { search: `%${search}%` });
@@ -186,7 +156,7 @@ export class BusinessesService {
     }
 
     async findOne(id: string): Promise<ApiResponseDto<BusinessResponseDto>> {
-        const business = await this.businessesRepository.findOne({ where: { id, is_archived: false }, relations: ['bank_account', 'opening_hours'] });
+        const business = await this.businessesRepository.findOne({ where: { id, is_archived: false } });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
@@ -291,7 +261,6 @@ export class BusinessesService {
         const query = this.businessesRepository
             .createQueryBuilder('business')
             .leftJoinAndSelect('business.category', 'category')
-            .leftJoinAndSelect('business.opening_hours', 'opening_hours')
             .where('business.id = :id', { id })
             .andWhere('business.is_archived = :isArchived', { isArchived: false })
             .andWhere('business.is_active = :isActive', { isActive: true })
@@ -355,21 +324,16 @@ export class BusinessesService {
         id: string,
         updateBusinessDto: UpdateBusinessDto,
         currentUser: any,
-        files?: BusinessUploadFiles,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
         return await this.dataSource.transaction(async (manager) => {
             const businessRepo = manager.getRepository(Business);
             const staffRepo = manager.getRepository(StaffUser);
-            const bankRepo = manager.getRepository(BusinessBankAccount);
-            const hoursRepo = manager.getRepository(BusinessOpeningHours);
 
             const business = await businessRepo.findOne({
                 where: {
                     id,
-                    country_code: currentUser.country_code,
                     is_archived: false,
-                },
-                relations: ['bank_account', 'opening_hours'],
+                }
             });
 
             if (!business)
@@ -377,31 +341,23 @@ export class BusinessesService {
                     `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
                 );
 
-            const fileUpdates = await this.buildBusinessFileUpdates(files, business);
-            const { oldUrlsToDelete, ...uploadedFileFields } = fileUpdates;
-            const mergedDto = { ...updateBusinessDto, ...uploadedFileFields };
-            // If license uploaded -> move to pending verification
-            const newLicenseUrl = uploadedFileFields.license_document_url;
-
-            if ((newLicenseUrl && newLicenseUrl !== business.license_document_url) || (business.license_document_url && business
-                .verification_status === BusinessVerificationStatus.UNVERIFIED)) {
-                business.verification_status = BusinessVerificationStatus.PENDING;
-                business.verification_submitted_at = new Date();
-            }
             const {
                 latitude,
                 longitude,
                 primary_staff_id,
-                bank_account,
-                opening_hours,
+                merchant_accounts,
                 ...rest
-            } = mergedDto;
-            console.log('business:', business);
+            } = updateBusinessDto;
+
             const updateData: Partial<Business> = {
                 ...rest,
                 updated_by: currentUser.id,
                 updated_at: new Date(),
             };
+
+            if (merchant_accounts !== undefined) {
+                updateData.merchant_accounts = this.normalizeMerchantAccounts(merchant_accounts);
+            }
 
             //  Location update
             if (latitude !== undefined && longitude !== undefined) {
@@ -411,13 +367,6 @@ export class BusinessesService {
                 };
             }
 
-            // Country info always from token
-            const country = await this.getCountryOrThrow(currentUser.country_code);
-
-            updateData.country_code = country.iso_code_3166;
-            updateData.currency_code = country.currency_code;
-            updateData.timezone = country.default_timezone;
-            updateData.default_language = country.default_language;
 
             //  Primary staff change
             if (primary_staff_id && primary_staff_id !== business.primary_staff_id) {
@@ -437,41 +386,17 @@ export class BusinessesService {
             // Apply primitive updates
             Object.assign(business, updateData);
 
-            // Replace Opening Hours (RELATIONAL WAY)
-            if (opening_hours) {
-                business.opening_hours = opening_hours.map((hour) =>
-                    hoursRepo.create({
-                        ...hour,
-                        business,
-                    }),
-                );
-            }
-
-            // Update / Create Bank Account (relational way)
-            if (bank_account) {
-                if (business.bank_account) {
-                    Object.assign(business.bank_account, bank_account);
-                } else {
-                    business.bank_account = bankRepo.create(bank_account);
-                }
-            }
-
             // Save everything (cascade handles relations)
             await businessRepo.save(business);
 
             const updated = await businessRepo.findOne({
-                where: { id },
-                relations: ['bank_account', 'opening_hours'],
+                where: { id }
             });
 
             if (!updated)
                 throw new NotFoundException(
                     `${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`,
                 );
-
-            if (oldUrlsToDelete.length) {
-                await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
-            }
 
             return ApiResponseDto.success(
                 DEFAULT_MESSAGES.BUSINESS.UPDATED,
@@ -480,67 +405,10 @@ export class BusinessesService {
         });
     }
 
-    private async buildBusinessFileUpdates(
-        files?: BusinessUploadFiles,
-        existingBusiness?: Business,
-    ): Promise<{
-        logo_url?: string;
-        banner_url?: string;
-        license_document_url?: string;
-        gallery_images?: string[];
-        oldUrlsToDelete: string[];
-    }> {
-        const oldUrlsToDelete: string[] = [];
-        const updates: {
-            logo_url?: string;
-            banner_url?: string;
-            license_document_url?: string;
-            gallery_images?: string[];
-            oldUrlsToDelete: string[];
-        } = { oldUrlsToDelete };
-
-        const logo = files?.logo_url?.[0];
-        if (logo) {
-            updates.logo_url = await this.s3UploadService.uploadFile(logo, 'businesses/logos');
-            if (existingBusiness?.logo_url) oldUrlsToDelete.push(existingBusiness.logo_url);
-        }
-
-        const banner = files?.banner_url?.[0];
-        if (banner) {
-            updates.banner_url = await this.s3UploadService.uploadFile(banner, 'businesses/banners');
-            if (existingBusiness?.banner_url) oldUrlsToDelete.push(existingBusiness.banner_url);
-        }
-
-        const license = files?.license_document_url?.[0];
-        if (license) {
-            updates.license_document_url = await this.s3UploadService.uploadFile(
-                license,
-                'businesses/licenses',
-            );
-            if (existingBusiness?.license_document_url) {
-                oldUrlsToDelete.push(existingBusiness.license_document_url);
-            }
-        }
-
-        const gallery = files?.gallery_images ?? [];
-        if (gallery.length) {
-            updates.gallery_images = await this.s3UploadService.uploadFiles(
-                gallery,
-                'businesses/gallery',
-            );
-            if (existingBusiness?.gallery_images?.length) {
-                oldUrlsToDelete.push(...existingBusiness.gallery_images);
-            }
-        }
-
-        return updates;
-    }
-
     async remove(id: string, currentUser: any): Promise<ApiResponseDto<{ id: string }>> {
         const business = await this.businessesRepository.findOne({
             where: {
                 id,
-                country_code: currentUser.country_code,
                 is_archived: false,
             },
         });
@@ -559,14 +427,13 @@ export class BusinessesService {
 
     async toggleStatus(
         id: string,
-        dto: { is_active: boolean },
+        dto: ToggleBusinessStatusDto,
         currentUser: any,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
 
         const business = await this.businessesRepository.findOne({
             where: {
                 id,
-                country_code: currentUser.country_code,
                 is_archived: false,
             },
         });
@@ -577,7 +444,7 @@ export class BusinessesService {
             );
         }
 
-        business.is_active = dto.is_active;
+        business.status = dto.business_status;
         business.updated_by = currentUser.id;
         business.updated_at = new Date();
 
@@ -597,6 +464,7 @@ export class BusinessesService {
         const businesses = await this.businessesRepository
             .createQueryBuilder('business')
             .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.city', 'city')
             .leftJoinAndSelect('business.primary_staff', 'staff')
             .leftJoinAndSelect('business.verified_by_admin', 'verifier')
             .leftJoinAndSelect('business.rejecter', 'rejecter')
@@ -605,9 +473,8 @@ export class BusinessesService {
             .select([
                 'business.id',
                 'business.display_name',
-                'business.owner_name',
-                'business.city',
-                'business.phone_e164',
+                'city.name',
+                'business.phone',
                 'business.logo_url',
                 'business.license_document_url',
                 'business.verification_status',

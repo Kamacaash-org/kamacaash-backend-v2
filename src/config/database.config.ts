@@ -4,22 +4,16 @@ import { registerAs } from '@nestjs/config';
 export default registerAs('database', () => ({
     type: 'postgres',
     url: process.env.DATABASE_URL, // ✅ USE THIS
-    
+
     ssl: {
         rejectUnauthorized: false, // ✅ REQUIRED FOR NEON
     },
-    
+
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
 
-    synchronize: false, // ✅ FORCE for now (dev)
-    
+    synchronize: false, // dev only: auto-sync schema from entities
+
     logging: false,
-    
-    migrations: [__dirname + '/../migrations/*{.ts,.js}'],
-    
-    cli: {
-        migrationsDir: 'src/migrations',
-    },
 }));
 // import { registerAs } from '@nestjs/config';
 

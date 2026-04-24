@@ -39,23 +39,12 @@ export class OffersService {
         createOfferDto: CreateOfferDto,
         currentUser: any,
         files?: OfferUploadFiles,
-    ): Promise<ApiResponseDto<OfferResponseDto>> {
+    ): Promise<ApiResponseDto<null>> {
         const business = await this.businessesRepository.findOne({ where: { id: createOfferDto.business_id } });
         if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${createOfferDto.business_id}`);
 
-        const parsedPickupWindows = this.parsePickupWindows(createOfferDto.pickup_windows);
-        const hasPickupWindows = parsedPickupWindows.length > 0;
-
-        if (!hasPickupWindows && (!createOfferDto.pickup_start || !createOfferDto.pickup_end)) {
-            throw new BadRequestException(DEFAULT_MESSAGES.OFFER.PICKUP_TIME_REQUIRED);
-        }
-
-        const pickupStart = hasPickupWindows
-            ? parsedPickupWindows.reduce((min, w) => (w.starts_at < min ? w.starts_at : min), parsedPickupWindows[0].starts_at)
-            : new Date(createOfferDto.pickup_start!);
-        const pickupEnd = hasPickupWindows
-            ? parsedPickupWindows.reduce((max, w) => (w.ends_at > max ? w.ends_at : max), parsedPickupWindows[0].ends_at)
-            : new Date(createOfferDto.pickup_end!);
+        const pickupStart = new Date(createOfferDto.pickup_start!);
+        const pickupEnd = new Date(createOfferDto.pickup_end!);
 
         if (pickupEnd <= pickupStart) {
             throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
@@ -67,41 +56,20 @@ export class OffersService {
         const offer = this.offersRepository.create({
             ...createOfferDto,
             ...uploadedFileFields,
-            currency_code: business.currency_code,
             original_price_minor: this.toMinorUnits(createOfferDto.original_price_minor),
             offer_price_minor: this.toMinorUnits(createOfferDto.offer_price_minor),
             pickup_start: pickupStart,
             pickup_end: pickupEnd,
             created_by_staff_id: currentUser?.id,
             quantity_remaining: createOfferDto.quantity_total,
-            slug: this.generateSlug(createOfferDto.title),
-            status: OfferStatus.PUBLISHED,
+            status: OfferStatus.DRAFT,
         });
 
         const created = await this.offersRepository.save(offer);
 
-        if (hasPickupWindows) {
-            await this.offerPickupWindowsRepository.save(
-                parsedPickupWindows.map((w) =>
-                    this.offerPickupWindowsRepository.create({
-                        offer_id: created.id,
-                        starts_at: w.starts_at,
-                        ends_at: w.ends_at,
-                        max_pickups_per_window: w.max_pickups_per_window,
-                    }),
-                ),
-            );
-        }
-
-        const withBusiness = await this.offersRepository.findOne({
-            where: { id: created.id },
-            relations: ['business', 'created_by_staff', 'updater', 'archiver', 'pickup_windows'],
-        });
-        if (!withBusiness) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${created.id}`);
-
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.CREATED,
-            OfferResponseDto.fromEntity(withBusiness),
+            null,
         );
     }
 
@@ -208,10 +176,10 @@ export class OffersService {
 
         const { entities, raw } = await query.getRawAndEntities();
         if (!entities.length) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
-        
+
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.FETCHED,
-            AppOfferResponseDto.fromEntity(entities[0], raw[0]),
+            AppOfferResponseDto.fromEntity(entities[0]),
         );
     }
 
@@ -233,10 +201,10 @@ export class OffersService {
         updateOfferDto: UpdateOfferDto,
         currentUser: any,
         files?: OfferUploadFiles,
-    ): Promise<ApiResponseDto<OfferResponseDto>> {
+    ): Promise<ApiResponseDto<null>> {
         const offer = await this.offersRepository.findOne({
             where: { id, is_archived: false },
-            relations: ['business', 'pickup_windows'],
+            relations: ['business'],
         });
         if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
 
@@ -245,7 +213,6 @@ export class OffersService {
 
         const updatePayload: Partial<Offer> = {};
         if (updateOfferDto.business_id !== undefined) updatePayload.business_id = updateOfferDto.business_id;
-        if (updateOfferDto.category_id !== undefined) updatePayload.category_id = updateOfferDto.category_id;
         if (updateOfferDto.title !== undefined) updatePayload.title = updateOfferDto.title;
         if (updateOfferDto.description !== undefined) updatePayload.description = updateOfferDto.description;
         if (updateOfferDto.short_description !== undefined) updatePayload.short_description = updateOfferDto.short_description;
@@ -263,34 +230,13 @@ export class OffersService {
         if (updateOfferDto.quantity_total !== undefined) updatePayload.quantity_total = updateOfferDto.quantity_total;
         if (updateOfferDto.max_per_user !== undefined) updatePayload.max_per_user = updateOfferDto.max_per_user;
         if (updateOfferDto.pickup_instructions !== undefined) updatePayload.pickup_instructions = updateOfferDto.pickup_instructions;
+        if (updateOfferDto.contents !== undefined) updatePayload.contents = updateOfferDto.contents;
+        if (updateOfferDto.is_order_time_limited !== undefined) updatePayload.is_order_time_limited = updateOfferDto.is_order_time_limited;
 
-        if (updateOfferDto.business_id) {
-            const business = await this.businessesRepository.findOne({ where: { id: updateOfferDto.business_id } });
-            if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${updateOfferDto.business_id}`);
-            updatePayload.currency_code = business.currency_code;
-        } else {
-            updatePayload.currency_code = offer.business?.currency_code || offer.currency_code;
-        }
+        if (updateOfferDto.order_cutoff_at !== undefined) updatePayload.order_cutoff_at = new Date(updateOfferDto.order_cutoff_at);
 
-        const parsedPickupWindows = updateOfferDto.pickup_windows !== undefined
-            ? this.parsePickupWindows(updateOfferDto.pickup_windows)
-            : undefined;
-
-        if (parsedPickupWindows !== undefined) {
-            if (parsedPickupWindows.length > 0) {
-                updatePayload.pickup_start = parsedPickupWindows.reduce(
-                    (min, w) => (w.starts_at < min ? w.starts_at : min),
-                    parsedPickupWindows[0].starts_at,
-                );
-                updatePayload.pickup_end = parsedPickupWindows.reduce(
-                    (max, w) => (w.ends_at > max ? w.ends_at : max),
-                    parsedPickupWindows[0].ends_at,
-                );
-            }
-        } else {
-            if (updateOfferDto.pickup_start) updatePayload.pickup_start = new Date(updateOfferDto.pickup_start);
-            if (updateOfferDto.pickup_end) updatePayload.pickup_end = new Date(updateOfferDto.pickup_end);
-        }
+        if (updateOfferDto.pickup_start) updatePayload.pickup_start = new Date(updateOfferDto.pickup_start);
+        if (updateOfferDto.pickup_end) updatePayload.pickup_end = new Date(updateOfferDto.pickup_end);
 
         const start = updatePayload.pickup_start || offer.pickup_start;
         const end = updatePayload.pickup_end || offer.pickup_end;
@@ -301,27 +247,6 @@ export class OffersService {
 
         await this.offersRepository.update(id, updatePayload);
 
-        if (parsedPickupWindows !== undefined) {
-            await this.offerPickupWindowsRepository.delete({ offer_id: id });
-            if (parsedPickupWindows.length > 0) {
-                await this.offerPickupWindowsRepository.save(
-                    parsedPickupWindows.map((w) =>
-                        this.offerPickupWindowsRepository.create({
-                            offer_id: id,
-                            starts_at: w.starts_at,
-                            ends_at: w.ends_at,
-                            max_pickups_per_window: w.max_pickups_per_window,
-                        }),
-                    ),
-                );
-            }
-        }
-
-        const updated = await this.offersRepository.findOne({
-            where: { id, is_archived: false },
-            relations: ['business', 'category', 'created_by_staff', 'updater', 'archiver', 'pickup_windows'],
-        });
-        if (!updated) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
 
         if (oldUrlsToDelete.length) {
             await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
@@ -329,7 +254,39 @@ export class OffersService {
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.OFFER.UPDATED,
-            OfferResponseDto.fromEntity(updated),
+            null,
+        );
+    }
+
+    async publish(id: string, currentUser: any): Promise<ApiResponseDto<null>> {
+        const offer = await this.offersRepository.findOne({ where: { id, is_archived: false } });
+        if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
+
+        offer.status = OfferStatus.PUBLISHED;
+        offer.published_at = new Date();
+        offer.updated_by = currentUser?.id;
+
+        await this.offersRepository.save(offer);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.OFFER.PUBLISHED,
+            null,
+        );
+    }
+
+    async pause(id: string, currentUser: any): Promise<ApiResponseDto<null>> {
+        const offer = await this.offersRepository.findOne({ where: { id, is_archived: false } });
+        if (!offer) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
+
+        offer.status = OfferStatus.PAUSED;
+        offer.paused_at = new Date();
+        offer.updated_by = currentUser?.id;
+
+        await this.offersRepository.save(offer);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.OFFER.PAUSED,
+            null,
         );
     }
 
@@ -340,7 +297,6 @@ export class OffersService {
         offer.is_archived = true;
         offer.archived_by = currentUser?.id;
         offer.archived_at = new Date();
-        offer.is_active = false;
         await this.offersRepository.save(offer);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.OFFER.DELETED, { id });

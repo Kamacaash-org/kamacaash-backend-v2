@@ -8,14 +8,14 @@ export class FindNearbyBusinessesDto {
   @IsNumber()
   @Min(-90)
   @Max(90)
-  lat: number;
+  lat?: number;
 
   @ApiProperty({ type: Number })
   @Type(() => Number)
   @IsNumber()
   @Min(-180)
   @Max(180)
-  lng: number;
+  lng?: number;
 
   @ApiPropertyOptional({ type: Number, default: 10 })
   @Type(() => Number)

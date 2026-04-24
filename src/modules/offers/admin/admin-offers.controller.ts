@@ -1,5 +1,5 @@
 import {
-    Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards, Request, UseInterceptors, UploadedFiles
+    Controller, Get, Post, Body, Put, Param, Delete, Query, UseGuards, Request, UseInterceptors, UploadedFiles, Patch
 } from '@nestjs/common';
 import { OffersService } from '../offers.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -37,7 +37,7 @@ export class AdminOffersController {
         @Body() createOfferDto: CreateOfferDto,
         @UploadedFiles() files: OfferUploadFiles,
         @Request() req,
-    ): Promise<ApiResponseDto<OfferResponseDto>> {
+    ): Promise<ApiResponseDto<null>> {
         return this.offersService.create(createOfferDto, req.user, files);
     }
 
@@ -70,8 +70,24 @@ export class AdminOffersController {
         @Body() updateOfferDto: UpdateOfferDto,
         @UploadedFiles() files: OfferUploadFiles,
         @Request() req,
-    ): Promise<ApiResponseDto<OfferResponseDto>> {
+    ): Promise<ApiResponseDto<null>> {
         return this.offersService.update(id, updateOfferDto, req.user, files);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Patch(':id/publish')
+    @ApiOperation({ summary: 'Publish offer' })
+    publish(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<null>> {
+        return this.offersService.publish(id, req.user);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Patch(':id/pause')
+    @ApiOperation({ summary: 'Pause offer' })
+    pause(@Param('id') id: string, @Request() req): Promise<ApiResponseDto<null>> {
+        return this.offersService.pause(id, req.user);
     }
 
     @UseGuards(JwtAuthGuard)

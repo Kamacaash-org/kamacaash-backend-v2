@@ -23,7 +23,7 @@ export class Order extends BaseEntity {
     @Column({ length: 50, unique: true })
     order_number: string;
 
-    @Column({ length: 10, unique: true})
+    @Column({ length: 10, unique: true })
     pickup_code: string;
 
     @Column({ type: 'uuid' })
@@ -86,7 +86,7 @@ export class Order extends BaseEntity {
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.HOLD })
     status: OrderStatus;
 
-   
+
     @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
     payment_status: PaymentStatus;
 

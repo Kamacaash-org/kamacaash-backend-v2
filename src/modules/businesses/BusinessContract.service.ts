@@ -8,11 +8,13 @@ import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
 import { Business } from './entities/business.entity';
 import {
+    ContractBusinessRowDto,
     ContractBusinessShortDto,
     SignedBusinessContractResponseDto,
+    SignedBusinessContractRowDto,
     UploadContractDto,
-    UploadContractResponseDto,
 } from './dto/business-contract.dto';
+import { BusinessVerificationStatus, PayoutSchedule } from 'src/common/entities/enums/all.enums';
 
 @Injectable()
 export class BusinessContractService {
@@ -27,40 +29,126 @@ export class BusinessContractService {
     async getBusinessWithNoContract(): Promise<ApiResponseDto<ContractBusinessShortDto[]>> {
         const businessesWithoutContract = await this.businessRepository
             .createQueryBuilder('business')
-            .leftJoinAndSelect('business.primary_staff', 'primary_staff')
+            .leftJoin('business.primary_staff', 'primary_staff')
+            .leftJoin('business.verified_by_admin', 'verified_by_admin')
+            .leftJoin('business.city', 'city')
+            .leftJoin('city.country', 'country')
             .leftJoin(BusinessContract, 'contract', 'contract.business_id = business.id')
             .where('contract.id IS NULL')
+            .andWhere('business.verification_status = :verified', {
+                verified: BusinessVerificationStatus.VERIFIED,
+            })
+            .select([
+                'business.id AS id',
+                'business.display_name AS display_name',
+                'business.phone AS phone',
+                'country.currency_symbol AS currency_symbol',
+                'city.name AS city',
+                'business.verification_reviewed_at AS verified_at',
+                'verified_by_admin.first_name AS verified_by_first_name',
+                'verified_by_admin.last_name AS verified_by_last_name',
+                'primary_staff.first_name AS primary_staff_first_name',
+                'primary_staff.last_name AS primary_staff_last_name',
+                'primary_staff.phone_e164 AS primary_staff_phone',
+            ])
             .orderBy('business.created_at', 'DESC')
-            .getMany();
+            .getRawMany<ContractBusinessRowDto>();
 
-        const data = businessesWithoutContract.map((business) => this.mapBusinessShort(business));
-        return ApiResponseDto.success('Businesses without contract fetched successfully', data);
+        return ApiResponseDto.success(
+            'Businesses without contract fetched successfully',
+            businessesWithoutContract.map((row) => ({
+                id: row.id,
+                display_name: row.display_name,
+                phone: row.phone,
+                currency_symbol: row.currency_symbol ?? undefined,
+                city: row.city ?? undefined,
+                verified_at: row.verified_at ?? undefined,
+                verified_by_name: row.verified_by_first_name
+                    ? `${row.verified_by_first_name} ${row.verified_by_last_name ?? ''}`.trim()
+                    : undefined,
+                primary_staff: {
+                    name: row.primary_staff_first_name
+                        ? `${row.primary_staff_first_name} ${row.primary_staff_last_name ?? ''}`.trim()
+                        : null,
+                    phone: row.primary_staff_phone ?? null,
+                },
+            })),
+        );
     }
 
     async getBusinessWithContract(): Promise<ApiResponseDto<SignedBusinessContractResponseDto[]>> {
-        const contracts = await this.contractRepository.find({
-            relations: ['business', 'business.primary_staff', 'uploader'],
-            order: { created_at: 'DESC' },
-        });
+        const contracts = await this.contractRepository
+            .createQueryBuilder('contract')
+            .leftJoin('contract.business', 'business')
+            .leftJoin('business.city', 'city')
+            .leftJoin('city.country', 'country')
+            .leftJoin('business.primary_staff', 'primary_staff')
+            .leftJoin('business.verified_by_admin', 'verified_by_admin')
+            .select([
+                'business.id AS business_id',
+                'business.display_name AS business_display_name',
+                'business.phone AS business_phone',
+                'country.currency_symbol AS business_currency_symbol',
+                'city.name AS business_city',
+                'business.verification_reviewed_at AS business_verified_at',
+                'verified_by_admin.first_name AS verified_by_first_name',
+                'verified_by_admin.last_name AS verified_by_last_name',
+                'primary_staff.first_name AS primary_staff_first_name',
+                'primary_staff.last_name AS primary_staff_last_name',
+                'primary_staff.phone_e164 AS primary_staff_phone',
+                'contract.id AS contract_id',
+                'contract.business_id AS contract_business_id',
+                'contract.contract_number AS contract_number',
+                'contract.version AS version',
+                'contract.is_signed AS is_signed',
+                'contract.signed_at AS signed_at',
+                'contract.signed_by_ip AS signed_by_ip',
+                'contract.agreement_pdf_url AS agreement_pdf_url',
+                'contract.payout_schedule AS payout_schedule',
+                'contract.effective_from AS effective_from',
+                'contract.effective_to AS effective_to',
+                'contract.auto_renew AS auto_renew',
+            ])
+            .addSelect('contract.commission_rate_bps / 100.0', 'commission_rate')
+            .addSelect('contract.fixed_commission_minor / 100.0', 'fixed_commission')
+            .addSelect('contract.minimum_payout_minor / 100.0', 'minimum_payout')
+            .orderBy('contract.created_at', 'DESC')
+            .getRawMany<SignedBusinessContractRowDto>();
 
-        const data = contracts.map((c) => ({
-            business: this.mapBusinessShort(c.business),
+        const data: SignedBusinessContractResponseDto[] = contracts.map((row) => ({
+            business: {
+                id: row.business_id,
+                display_name: row.business_display_name,
+                phone: row.business_phone,
+                currency_symbol: row.business_currency_symbol ?? undefined,
+                city: row.business_city ?? undefined,
+                verified_at: row.business_verified_at ?? undefined,
+                verified_by_name: row.verified_by_first_name
+                    ? `${row.verified_by_first_name} ${row.verified_by_last_name ?? ''}`.trim()
+                    : undefined,
+                primary_staff: {
+                    name: row.primary_staff_first_name
+                        ? `${row.primary_staff_first_name} ${row.primary_staff_last_name ?? ''}`.trim()
+                        : null,
+                    phone: row.primary_staff_phone ?? null,
+                },
+            },
             contract: {
-                id: c.id,
-                business_id: c.business_id,
-                contract_number: c.contract_number,
-                version: c.version,
-                is_signed: true,
-                signed_at: c.signed_at,
-                signed_by_ip: c.signed_by_ip,
-                agreement_pdf_url: c.agreement_pdf_url,
-                payout_schedule: c.payout_schedule,
-                commission_rate_bps: c.commission_rate_bps,
-                fixed_commission_minor: c.fixed_commission_minor,
-                minimum_payout_minor: c.minimum_payout_minor,
-                effective_from: c.effective_from,
-                effective_to: c.effective_to,
-                auto_renew: c.auto_renew,
+                id: row.contract_id,
+                business_id: row.contract_business_id,
+                contract_number: row.contract_number,
+                version: row.version,
+                is_signed: row.is_signed,
+                signed_at: row.signed_at,
+                signed_by_ip: row.signed_by_ip,
+                agreement_pdf_url: row.agreement_pdf_url,
+                payout_schedule: row.payout_schedule,
+                commission_rate: Number(row.commission_rate) + "%",
+                fixed_commission: Number(row.fixed_commission) + (row.business_currency_symbol ?? '$'),
+                minimum_payout: Number(row.minimum_payout) + (row.business_currency_symbol ?? '$'),
+                effective_from: row.effective_from,
+                effective_to: row.effective_to,
+                auto_renew: row.auto_renew,
             },
         }));
 
@@ -73,15 +161,13 @@ export class BusinessContractService {
         staff: StaffUser,
         ip: string,
         contractDocument: UploadedFile | undefined,
-    ): Promise<ApiResponseDto<UploadContractResponseDto>> {
-        const business = await this.businessRepository.findOne({
+    ): Promise<ApiResponseDto<null>> {
+        const businessExists = await this.businessRepository.exists({
             where: { id: businessId },
-            relations: ['primary_staff'],
         });
+        if (!businessExists) throw new NotFoundException('Business not found');
 
-        if (!business) throw new NotFoundException('Business not found');
-
-        const existing = await this.contractRepository.findOne({
+        const existing = await this.contractRepository.exists({
             where: { business_id: businessId },
         });
         if (existing) {
@@ -102,9 +188,15 @@ export class BusinessContractService {
         contract.contract_number = await this.generateNextContractNumber();
         contract.version = dto.version;
         contract.payout_schedule = dto.payout_schedule ?? contract.payout_schedule;
-        contract.commission_rate_bps = dto.commission_rate_bps ?? 1000;
-        contract.fixed_commission_minor = dto.fixed_commission_minor ?? 0;
-        contract.minimum_payout_minor = dto.minimum_payout_minor ?? 1000;
+        contract.commission_rate_bps = dto.commission_rate !== undefined
+            ? Math.round(dto.commission_rate * 100)
+            : 1000;
+        contract.fixed_commission_minor = dto.fixed_commission !== undefined
+            ? Math.round(dto.fixed_commission * 100)
+            : 0;
+        contract.minimum_payout_minor = dto.minimum_payout !== undefined
+            ? Math.round(dto.minimum_payout * 100)
+            : 1000;
         contract.effective_from = dto.effective_from ? new Date(dto.effective_from) : new Date();
         contract.effective_to = dto.effective_to ? new Date(dto.effective_to) : null;
         contract.auto_renew = dto.auto_renew ?? true;
@@ -115,26 +207,7 @@ export class BusinessContractService {
         contract.agreement_pdf_url = agreementPdfUrl;
         await this.contractRepository.save(contract);
 
-        return ApiResponseDto.success('Contract uploaded successfully', {
-            business: this.mapBusinessShort(business),
-            contract: {
-                id: contract.id,
-                business_id: contract.business_id,
-                contract_number: contract.contract_number,
-                version: contract.version,
-                is_signed: true,
-                signed_at: contract.signed_at,
-                signed_by_ip: contract.signed_by_ip,
-                agreement_pdf_url: contract.agreement_pdf_url,
-                payout_schedule: contract.payout_schedule,
-                commission_rate_bps: contract.commission_rate_bps,
-                fixed_commission_minor: contract.fixed_commission_minor,
-                minimum_payout_minor: contract.minimum_payout_minor,
-                effective_from: contract.effective_from,
-                effective_to: contract.effective_to,
-                auto_renew: contract.auto_renew,
-            },
-        });
+        return ApiResponseDto.success('Contract uploaded successfully', null);
     }
 
     private async generateNextContractNumber(): Promise<string> {
@@ -149,22 +222,5 @@ export class BusinessContractService {
             if (!exists) return candidate;
             next += 1;
         }
-    }
-
-    private mapBusinessShort(business: Business): ContractBusinessShortDto {
-        const staff = business?.primary_staff;
-        return {
-            id: business.id,
-            display_name: business.display_name,
-            owner_name: business.owner_name,
-            city: business.city,
-            phone_e164: business.phone_e164,
-            primary_staff: staff
-                ? {
-                    name: `${staff.first_name} ${staff.last_name}`,
-                    phone: staff.phone_e164,
-                }
-                : { name: null, phone: null },
-        };
     }
 }

@@ -5,66 +5,66 @@ import { StaffUser } from '../../staff/entities/staff-user.entity';
 @Entity('countries')
 export class Country extends BaseEntity {
     @Column({ type: 'char', length: 2, unique: true })
-    iso_code_3166: string;
+    iso_code_3166!: string;
 
     @Column({ type: 'char', length: 3, unique: true })
-    iso_code_3166_3: string;
+    iso_code_3166_3!: string;
 
     @Column({ length: 100 })
-    name: string;
+    name!: string;
 
     @Column({ length: 100, nullable: true })
-    native_name: string;
+    native_name!: string;
 
     @Column({ length: 10, unique: true })
-    phone_code: string;
+    phone_code!: string;
 
     @Column({ type: 'int', nullable: true })
-    phone_number_length: number;
+    phone_number_length!: number;
 
     @Column({ type: 'char', length: 3 })
-    currency_code: string;
+    currency_code!: string;
 
     @Column({ length: 10 })
-    currency_symbol: string;
+    currency_symbol!: string;
 
     @Column({ length: 50 })
-    currency_name: string;
+    currency_name!: string;
 
     @Column({ length: 50 })
-    default_timezone: string;
+    default_timezone!: string;
 
     @Column({ type: 'jsonb', default: [] })
-    supported_timezones: string[];
+    supported_timezones!: string[];
 
     @Column({ length: 10, default: 'en' })
-    default_language: string;
+    default_language!: string;
 
     @Column({ type: 'jsonb', default: ['en'] })
-    supported_languages: string[];
+    supported_languages!: string[];
 
     @Column({ length: 50, nullable: true })
-    postal_code_format: string;
+    postal_code_format!: string;
 
     @Column({ type: 'uuid', nullable: true })
     created_by?: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'created_by' })
-    creator: StaffUser;
+    creator!: StaffUser;
 
 
     @Column({ type: 'uuid', nullable: true })
-    updated_by: string;
+    updated_by!: string;
 
     @ManyToOne(() => StaffUser)
     @JoinColumn({ name: 'updated_by' })
-    updater: StaffUser;
+    updater!: StaffUser;
 
 
     @Column({ default: true })
-    is_active: boolean;
+    is_active!: boolean;
 
     @Column({ default: false })
-    is_archived: boolean;
+    is_archived!: boolean;
 }

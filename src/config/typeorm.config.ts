@@ -11,7 +11,7 @@ export default new DataSource({
     },
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/migrations/*.ts'],
-    synchronize: false, // ✅ for now (dev)
+    synchronize: false, // dev only: auto-sync schema from entities
 });
 // import { DataSource } from 'typeorm';
 // import { config } from 'dotenv';

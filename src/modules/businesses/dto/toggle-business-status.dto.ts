@@ -1,8 +1,9 @@
 import { IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { BusinessStatus } from 'src/common/entities/enums/all.enums';
 
 export class ToggleBusinessStatusDto {
-    @ApiProperty({ example: true })
+    @ApiProperty({ example: BusinessStatus.ACTIVE })
     @IsBoolean()
-    is_active: boolean;
+    business_status!: BusinessStatus;
 }

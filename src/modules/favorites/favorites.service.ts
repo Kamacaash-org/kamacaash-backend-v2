@@ -87,12 +87,6 @@ export class FavoritesService {
         favorite.is_removed = true;
         favorite.removed_at = new Date();
         const saved = await this.favoritesRepository.save(favorite);
-        await this.businessesRepository
-            .createQueryBuilder()
-            .update(Business)
-            .set({ total_favorites: () => 'GREATEST(total_favorites - 1, 0)' })
-            .where('id = :businessId', { businessId })
-            .execute();
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.FAVORITE.REMOVED,
@@ -173,7 +167,6 @@ export class FavoritesService {
             where: {
                 id: businessId,
                 is_archived: false,
-                is_active: true,
                 status: BusinessStatus.ACTIVE,
             },
         });

@@ -46,7 +46,7 @@ export class CategoriesService {
             order: { sort_order: 'ASC' },
             select: ['id', 'name', 'icon_url', 'image_url', 'slug', 'sort_order']
         });
-        
+
         const mapped = categories.map(cat => ({
             id: cat.id,
             name: cat.name,
@@ -107,7 +107,6 @@ export class CategoriesService {
         files?: CategoryUploadFiles,
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
 
-        const countryCodeFromToken = currentUser.country_code;
         const created_by = currentUser.id;
         const fileUpdates = await this.buildCategoryFileUpdates(files);
         const { oldUrlsToDelete: _unusedOldUrls, ...uploadedFileFields } = fileUpdates;
@@ -115,15 +114,9 @@ export class CategoriesService {
         const category: BusinessCategory = this.categoriesRepository.create({
             ...createCategoryDto,
             ...uploadedFileFields,
-            country_code: countryCodeFromToken,
             created_by,
         } as DeepPartial<BusinessCategory>);
 
-        if (createCategoryDto.parent_id) {
-            category.parent = await this.getCategoryByIdOrThrow(
-                createCategoryDto.parent_id,
-            );
-        }
 
         const created = await this.categoriesRepository.save(category);
 
@@ -140,7 +133,6 @@ export class CategoriesService {
     ): Promise<ApiResponseDto<CategoryResponseDto>> {
 
         const updated_by = currentUser.id;
-        const countryCodeFromToken = currentUser.country_code;
 
         const category = await this.getCategoryByIdOrThrow(id);
         const fileUpdates = await this.buildCategoryFileUpdates(files, category);
@@ -151,16 +143,10 @@ export class CategoriesService {
             {
                 ...updateCategoryDto,
                 ...uploadedFileFields,
-                country_code: countryCodeFromToken,
                 updated_by,
             },
         );
 
-        if (updateCategoryDto.parent_id) {
-            updated.parent = await this.getCategoryByIdOrThrow(
-                updateCategoryDto.parent_id,
-            );
-        }
 
         const saved = await this.categoriesRepository.save(updated);
         if (oldUrlsToDelete.length) {
@@ -178,7 +164,6 @@ export class CategoriesService {
         const category = await this.categoriesRepository.findOne({
             where: {
                 id,
-                country_code: currentUser.country_code,
                 is_archived: false,
             },
         });

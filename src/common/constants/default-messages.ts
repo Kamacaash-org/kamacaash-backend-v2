@@ -1,4 +1,13 @@
 export const DEFAULT_MESSAGES = {
+  CITY: {
+    LIST_FETCHED: 'Cities fetched successfully',
+    FETCHED: 'City fetched successfully',
+    CREATED: 'City created successfully',
+    UPDATED: 'City updated successfully',
+    DELETED: 'City deleted successfully',
+    NOT_FOUND: 'City not found',
+    ALREADY_EXISTS: 'City already exists',
+  },
   COUNTRY: {
     LIST_FETCHED: 'Countries fetched successfully',
     FETCHED: 'Country fetched successfully',
@@ -65,6 +74,8 @@ export const DEFAULT_MESSAGES = {
     FETCHED: 'Offer fetched successfully',
     CREATED: 'Offer created successfully',
     UPDATED: 'Offer updated successfully',
+    PUBLISHED: 'Offer published successfully',
+    PAUSED: 'Offer paused successfully',
     DELETED: 'Offer deleted successfully',
     NOT_FOUND: 'Offer not found',
     INACTIVE: 'Offer is not active',

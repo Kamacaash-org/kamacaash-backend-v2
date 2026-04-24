@@ -1,6 +1,8 @@
 import {
   IsArray,
+  IsBoolean,
   IsEmail,
+  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -10,11 +12,28 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { CreateBusinessBankAccountDto } from './BankAccount.dto';
-import { CreateBusinessOpeningHourDto } from './OpeningHours.dto';
+import { BusinessStatus } from 'src/common/entities/enums/all.enums';
+
+class MerchantAccountDto {
+  @ApiProperty({ example: 'Kamacaash Foods Ltd' })
+  @IsString()
+  @IsNotEmpty()
+  merchantHolderName!: string;
+
+  @ApiProperty({ example: '252612345678' })
+  @IsString()
+  @IsNotEmpty()
+  merchantAccountNumber!: string;
+
+  @ApiProperty({ example: 'WAAFI' })
+  @IsString()
+  @IsNotEmpty()
+  merchantBankCode!: string;
+}
 
 export class CreateBusinessDto {
   private static parseJson(value: unknown): unknown {
@@ -32,77 +51,33 @@ export class CreateBusinessDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  owner_name?: string;
+  legal_name?: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  legal_name: string;
-
-  @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  display_name: string;
+  display_name?: string;
 
   @ApiProperty()
   @IsUUID()
-  category_id: string;
+  category_id?: string;
 
   @ApiProperty()
   @IsUUID()
-  primary_staff_id: string;
-
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  @IsArray()
-  @IsUUID('all', { each: true })
-  subcategories?: string[];
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  @IsArray()
-  @IsString({ each: true })
-  tags?: string[];
-
+  primary_staff_id?: string;
 
   @ApiProperty()
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  city?: string;
+  city_id?: string;
+
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(100)
-  region?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  district?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  address_line1?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  address_line2?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(20)
-  postal_code?: string;
+  address_line?: string;
 
   @ApiProperty()
   @Type(() => Number)
@@ -122,7 +97,7 @@ export class CreateBusinessDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  phone_e164: string;
+  phone?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -149,23 +124,6 @@ export class CreateBusinessDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  logo_url?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  banner_url?: string;
-
-  @ApiPropertyOptional({ type: [String] })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  @IsArray()
-  @IsString({ each: true })
-  gallery_images?: string[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
   description?: string;
 
   @ApiPropertyOptional()
@@ -177,49 +135,20 @@ export class CreateBusinessDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  @MaxLength(100)
-  registration_number?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  tax_id?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  license_document_url?: string;
-
-  @ApiPropertyOptional({ type: Object })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  business_hours?: Record<string, any[]>;
-
-  @ApiPropertyOptional({ type: [Object] })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  @IsArray()
-  holiday_hours?: any[];
-
-  @ApiPropertyOptional({ type: Object })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  settings?: Record<string, any>;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
   notes?: string;
 
-  @ApiPropertyOptional({ type: [CreateBusinessOpeningHourDto] })
+  @ApiPropertyOptional({ enum: BusinessStatus })
+  @IsOptional()
+  @IsEnum(BusinessStatus)
+  status?: BusinessStatus;
+
+
+  @ApiPropertyOptional({ type: [MerchantAccountDto] })
   @IsOptional()
   @Transform(({ value }) => CreateBusinessDto.parseJson(value))
   @IsArray()
-  opening_hours?: CreateBusinessOpeningHourDto[];
+  @ValidateNested({ each: true })
+  @Type(() => MerchantAccountDto)
+  merchant_accounts?: MerchantAccountDto[];
 
-  @ApiPropertyOptional({ type: CreateBusinessBankAccountDto })
-  @IsOptional()
-  @Transform(({ value }) => CreateBusinessDto.parseJson(value))
-  bank_account?: CreateBusinessBankAccountDto;
 }

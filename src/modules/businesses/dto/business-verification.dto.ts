@@ -3,22 +3,19 @@ import { BusinessVerificationStatus } from '../../../common/entities/enums/all.e
 import { Business } from '../entities/business.entity';
 export class BusinessVerificationListDto {
     @ApiProperty()
-    id: string;
+    id?: string;
 
     @ApiProperty()
-    display_name: string;
-
-    @ApiProperty()
-    owner_name: string;
+    display_name?: string;
 
     @ApiPropertyOptional()
     category_name?: string;
 
     @ApiProperty()
-    city: string;
+    city_name?: string;
 
     @ApiProperty()
-    phone_e164: string;
+    phone?: string;
 
     @ApiPropertyOptional()
     logo_url?: string;
@@ -33,7 +30,7 @@ export class BusinessVerificationListDto {
     primary_staff_phone?: string;
 
     @ApiProperty({ enum: BusinessVerificationStatus })
-    verification_status: BusinessVerificationStatus;
+    verification_status?: BusinessVerificationStatus;
 
     @ApiPropertyOptional()
     verified_at?: Date;
@@ -50,17 +47,16 @@ export class BusinessVerificationListDto {
     @ApiPropertyOptional()
     rejection_reason?: string;
 
-    @ApiProperty()
-    created_at: Date;
+    @ApiPropertyOptional()
+    created_at?: Date;
 
     static fromEntity(business: Business): BusinessVerificationListDto {
         return {
             id: business.id,
             display_name: business.display_name,
-            owner_name: business.owner_name,
             category_name: business.category?.name,
-            city: business.city,
-            phone_e164: business.phone_e164,
+            city_name: business.city?.name,
+            phone: business.phone,
             logo_url: business.logo_url,
             license_document_url: business.license_document_url,
             primary_staff_name: business.primary_staff

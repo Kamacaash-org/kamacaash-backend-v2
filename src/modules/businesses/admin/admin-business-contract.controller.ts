@@ -9,7 +9,6 @@ import {
     ContractBusinessShortDto,
     SignedBusinessContractResponseDto,
     UploadContractDto,
-    UploadContractResponseDto,
 } from '../dto/business-contract.dto';
 
 type ContractUploadFiles = {
@@ -50,7 +49,7 @@ export class AdminBusinessContractController {
         @Body() dto: UploadContractDto,
         @UploadedFiles() files: ContractUploadFiles,
         @Request() req,
-    ): Promise<ApiResponseDto<UploadContractResponseDto>> {
+    ): Promise<ApiResponseDto<null>> {
         const ip = req.ip || req.connection.remoteAddress;
         return this.contractService.uploadContract(
             businessId,

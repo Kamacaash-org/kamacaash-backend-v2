@@ -1,4 +1,5 @@
 import {
+    IsBoolean,
     IsString,
     IsNotEmpty,
     IsUUID,
@@ -12,40 +13,27 @@ import {
     IsInt,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-
-export class OfferPickupWindowInputDto {
-    @ApiProperty()
-    @IsDateString()
-    starts_at: string;
-
-    @ApiProperty()
-    @IsDateString()
-    ends_at: string;
-
-    @ApiPropertyOptional()
-    @IsOptional()
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    max_pickups_per_window?: number;
-}
+import { Transform, Type } from 'class-transformer';
 
 export class CreateOfferDto {
+    private static toBoolean(value: unknown): unknown {
+        if (typeof value === 'string') {
+            const normalized = value.trim().toLowerCase();
+            if (normalized === 'true') return true;
+            if (normalized === 'false') return false;
+        }
+        return value;
+    }
+
     @ApiProperty()
     @IsUUID()
-    business_id: string;
-
-    @ApiPropertyOptional()
-    @IsOptional()
-    @IsUUID()
-    category_id?: string;
+    business_id!: string;
 
     @ApiProperty()
     @IsString()
     @IsNotEmpty()
     @MaxLength(255)
-    title: string;
+    title!: string;
 
     @ApiPropertyOptional()
     @IsOptional()
@@ -68,6 +56,12 @@ export class CreateOfferDto {
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
+    contents?: string[];
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
     dietary_info?: string[];
 
     @ApiPropertyOptional()
@@ -83,15 +77,20 @@ export class CreateOfferDto {
 
     @ApiPropertyOptional()
     @IsOptional()
+    @Transform(({ value }) => CreateOfferDto.toBoolean(value))
+    @IsBoolean()
+    is_order_time_limited?: boolean;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsDateString()
+    order_cutoff_at?: string;
+
+    @ApiPropertyOptional()
+    @IsOptional()
     @IsArray()
     @IsString({ each: true })
     gallery_images?: string[];
-
-    @ApiPropertyOptional({ default: 'USD', description: 'Ignored when business has enforced currency/country defaults' })
-    @IsOptional()
-    @IsString()
-    @IsNotEmpty()
-    currency_code?: string;
 
     @ApiProperty({
         description: 'Original price in normal money units. Example: send 12.5 for $12.50; the API stores 1250.',
@@ -100,7 +99,7 @@ export class CreateOfferDto {
     @Type(() => Number)
     @IsNumber()
     @Min(0)
-    original_price_minor: number;
+    original_price_minor!: number;
 
     @ApiProperty({
         description: 'Offer price in normal money units. Example: send 9.99 for $9.99; the API stores 999.',
@@ -109,19 +108,19 @@ export class CreateOfferDto {
     @Type(() => Number)
     @IsNumber()
     @Min(0)
-    offer_price_minor: number;
+    offer_price_minor!: number;
 
     @ApiProperty()
     @Type(() => Number)
     @IsNumber()
     @Min(1)
-    quantity_total: number;
+    quantity_total!: number;
 
-    @ApiProperty({ default: 1 })
+    @ApiProperty({ default: 10 })
     @Type(() => Number)
     @IsNumber()
     @Min(1)
-    max_per_user: number;
+    max_per_user!: number;
 
     @ApiPropertyOptional()
     @IsOptional()
@@ -137,11 +136,4 @@ export class CreateOfferDto {
     @IsOptional()
     @IsString()
     pickup_instructions?: string;
-
-    @ApiPropertyOptional({ type: [OfferPickupWindowInputDto] })
-    @IsOptional()
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => OfferPickupWindowInputDto)
-    pickup_windows?: OfferPickupWindowInputDto[];
 }
