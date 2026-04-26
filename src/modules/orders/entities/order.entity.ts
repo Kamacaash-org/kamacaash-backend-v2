@@ -21,31 +21,31 @@ import {
 @Entity('orders')
 export class Order extends BaseEntity {
     @Column({ length: 50, unique: true })
-    order_number: string;
+    order_number!: string;
 
     @Column({ length: 10, unique: true })
-    pickup_code: string;
+    pickup_code!: string;
 
     @Column({ type: 'uuid' })
-    user_id: string;
+    user_id!: string;
 
     @ManyToOne(() => AppUser)
     @JoinColumn({ name: 'user_id' })
-    user: AppUser;
+    user!: AppUser;
 
     @Column({ type: 'uuid' })
-    business_id: string;
+    business_id!: string;
 
     @ManyToOne(() => Business)
     @JoinColumn({ name: 'business_id' })
-    business: Business;
+    business!: Business;
 
     @Column({ type: 'uuid' })
-    offer_id: string;
+    offer_id!: string;
 
     @ManyToOne(() => Offer)
     @JoinColumn({ name: 'offer_id' })
-    offer: Offer;
+    offer!: Offer;
 
     @Column({ type: 'uuid', nullable: true })
     created_by_staff_id?: string;
@@ -55,123 +55,123 @@ export class Order extends BaseEntity {
     created_by_staff?: StaffUser;
 
     @Column({ type: 'int' })
-    quantity: number;
+    quantity!: number;
 
     @Column({ type: 'int' })
-    unit_price_minor: number;
+    unit_price_minor!: number;
 
     @Column({
         type: 'int',
         generatedType: 'STORED',
         asExpression: 'quantity * unit_price_minor',
     })
-    subtotal_minor: number;
+    subtotal_minor?: number;
 
     @Column({ type: 'int', default: 0 })
-    tax_minor: number;
+    tax_minor?: number;
 
     @Column({ type: 'int', default: 0 })
-    discount_minor: number;
+    discount_minor?: number;
 
     @Column({
         type: 'int',
         generatedType: 'STORED',
         asExpression: 'quantity * unit_price_minor + tax_minor - discount_minor',
     })
-    total_amount_minor: number;
+    total_amount_minor!: number;
 
     @Column({ type: 'char', length: 3 })
     currency_code?: string;
 
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.HOLD })
-    status: OrderStatus;
+    status!: OrderStatus;
 
 
     @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.PENDING })
-    payment_status: PaymentStatus;
+    payment_status!: PaymentStatus;
 
     @Column({ type: 'timestamptz', nullable: true })
-    hold_expires_at: Date;
+    hold_expires_at!: Date;
 
     @Column({ type: 'timestamptz', default: () => 'NOW()' })
-    reserved_at: Date;
+    reserved_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    confirmed_at: Date;
+    confirmed_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    paid_at: Date;
+    paid_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    ready_for_pickup_at: Date;
+    ready_for_pickup_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    collected_at: Date;
+    collected_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    cancelled_at: Date;
+    cancelled_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    expired_at: Date;
+    expired_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    no_show_at: Date | null;
+    no_show_at?: Date | null;
 
     @Column({ type: 'timestamptz', nullable: true })
-    pickup_time: Date;
+    pickup_time?: Date;
 
     @Column({ type: 'uuid', nullable: true })
-    pickup_verified_by: string;
+    pickup_verified_by?: string;
 
     @ManyToOne(() => StaffUser, { onDelete: 'SET NULL' })
     @JoinColumn({ name: 'pickup_verified_by' })
-    pickup_verifier: StaffUser;
+    pickup_verifier?: StaffUser;
 
     @Column({ type: 'timestamptz', nullable: true })
-    pickup_verified_at: Date;
+    pickup_verified_at?: Date;
 
     @Column({ type: 'enum', enum: PayoutMethod, nullable: true })
-    payment_method: PayoutMethod;
+    payment_method?: PayoutMethod;
 
     @Column({ type: 'enum', enum: PaymentProvider, nullable: true })
-    payment_provider: PaymentProvider;
+    payment_provider?: PaymentProvider;
 
     @Column({ length: 255, nullable: true })
-    payment_intent_id: string;
+    payment_intent_id?: string;
 
     @Column({ length: 255, nullable: true })
-    payment_transaction_id: string;
+    payment_transaction_id?: string;
 
     @Column({ length: 255, nullable: true })
-    customer_name: string;
+    customer_name?: string;
 
     @Column({ length: 255, nullable: true })
-    customer_email: string;
+    customer_email?: string;
 
     @Column({ length: 50, nullable: true })
-    customer_phone: string;
+    customer_phone?: string;
 
     @Column({ type: 'text', nullable: true })
-    special_requests: string;
+    special_requests?: string;
 
     @Column({ type: 'text', nullable: true })
     cancellation_reason?: string;
 
     @Column({ type: 'timestamptz', nullable: true })
-    confirmation_sent_at: Date;
+    confirmation_sent_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    reminder_sent_at: Date;
+    reminder_sent_at?: Date;
 
     @Column({ type: 'timestamptz', nullable: true })
-    pickup_reminder_sent_at: Date;
+    pickup_reminder_sent_at?: Date;
 
     @Column({ default: false })
-    has_user_reviewed: boolean;
+    has_user_reviewed?: boolean;
 
     @Column({ type: 'inet', nullable: true })
-    ip_address: string;
+    ip_address?: string;
 
     @Column({ type: 'text', nullable: true })
-    user_agent: string;
+    user_agent?: string;
 }

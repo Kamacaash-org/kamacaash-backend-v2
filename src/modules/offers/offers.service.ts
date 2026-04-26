@@ -28,8 +28,6 @@ export class OffersService {
     constructor(
         @InjectRepository(Offer)
         private offersRepository: Repository<Offer>,
-        @InjectRepository(OfferPickupWindow)
-        private offerPickupWindowsRepository: Repository<OfferPickupWindow>,
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
         private readonly s3UploadService: S3UploadService,
@@ -174,7 +172,7 @@ export class OffersService {
             query.setParameter('lat', queryParams.lat);
         }
 
-        const { entities, raw } = await query.getRawAndEntities();
+        const { entities } = await query.getRawAndEntities();
         if (!entities.length) throw new NotFoundException(`${DEFAULT_MESSAGES.OFFER.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(
@@ -338,28 +336,5 @@ export class OffersService {
         return Math.round(amount * 100);
     }
 
-    private parsePickupWindows(
-        pickupWindows?: Array<{
-            starts_at: string;
-            ends_at: string;
-            max_pickups_per_window?: number;
-        }>,
-    ): Array<{ starts_at: Date; ends_at: Date; max_pickups_per_window?: number }> {
-        if (!pickupWindows?.length) return [];
 
-        return pickupWindows.map((window) => {
-            const startsAt = new Date(window.starts_at);
-            const endsAt = new Date(window.ends_at);
-
-            if (endsAt <= startsAt) {
-                throw new BadRequestException(DEFAULT_MESSAGES.OFFER.INVALID_PICKUP_WINDOW);
-            }
-
-            return {
-                starts_at: startsAt,
-                ends_at: endsAt,
-                max_pickups_per_window: window.max_pickups_per_window,
-            };
-        });
-    }
 }

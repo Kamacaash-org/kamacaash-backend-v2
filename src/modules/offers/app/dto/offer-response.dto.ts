@@ -188,7 +188,6 @@ export class OfferResponseDto {
         return {
             id: offer.id,
             business_id: offer.business_id,
-            archived_at: (offer as any).archived_at,
             title: offer.title,
             description: offer.description,
             short_description: offer.short_description,
@@ -208,8 +207,6 @@ export class OfferResponseDto {
             order_cutoff_at: offer.order_cutoff_at,
             content: offer.contents,
             max_per_user: offer.max_per_user,
-            status: offer.status,
-            is_archived: offer.is_archived,
             is_featured: offer.is_featured,
             pickup_start: offer.pickup_start,
             pickup_end: offer.pickup_end,
@@ -217,31 +214,7 @@ export class OfferResponseDto {
             advance_notice_hours: offer.advance_notice_hours,
             expires_at: offer.expires_at,
             published_at: offer.published_at,
-            notes: offer.notes,
-            created_at: offer.created_at,
-            updated_at: offer.updated_at,
-            deleted_at: offer.deleted_at,
-            created_by_staff: (offer as any).created_by_staff
-                ? {
-                    id: (offer as any).created_by_staff.id,
-                    name: `${(offer as any).created_by_staff.first_name} ${(offer as any).created_by_staff.last_name}`,
-                    phone: (offer as any).created_by_staff.phone_e164,
-                }
-                : null,
-            updated_by_staff: (offer as any).updater
-                ? {
-                    id: (offer as any).updater.id,
-                    name: `${(offer as any).updater.first_name} ${(offer as any).updater.last_name}`,
-                    phone: (offer as any).updater.phone_e164,
-                }
-                : null,
-            archived_by_staff: (offer as any).archiver
-                ? {
-                    id: (offer as any).archiver.id,
-                    name: `${(offer as any).archiver.first_name} ${(offer as any).archiver.last_name}`,
-                    phone: (offer as any).archiver.phone_e164,
-                }
-                : null,
+            notes: offer.notes
         };
     }
 }
