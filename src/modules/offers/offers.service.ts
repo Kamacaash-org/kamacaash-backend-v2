@@ -116,6 +116,8 @@ export class OffersService {
         const query = this.offersRepository
             .createQueryBuilder('offer')
             .leftJoinAndSelect('offer.business', 'business')
+            .leftJoinAndSelect('business.city', 'city')
+            .leftJoinAndSelect('city.country', 'country')
             .leftJoinAndSelect('offer.category', 'category')
             .where('offer.is_archived = :isArchived', { isArchived: false })
             .andWhere('offer.status = :status', { status: OfferStatus.PUBLISHED });
@@ -160,6 +162,8 @@ export class OffersService {
         const query = this.offersRepository
             .createQueryBuilder('offer')
             .leftJoinAndSelect('offer.business', 'business')
+            .leftJoinAndSelect('business.city', 'city')
+            .leftJoinAndSelect('city.country', 'country')
             .leftJoinAndSelect('offer.category', 'category')
             .leftJoinAndSelect('offer.pickup_windows', 'pickup_windows')
             .where('offer.id = :id', { id })

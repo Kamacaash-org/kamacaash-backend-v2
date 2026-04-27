@@ -13,11 +13,11 @@ export class AppOfferListResponseDto {
     @ApiPropertyOptional()
     main_image_url?: string;
     @ApiPropertyOptional()
-    original_price_minor?: number;
+    original_price?: number;
     @ApiPropertyOptional()
-    offer_price_minor?: number;
+    offer_price?: number;
     @ApiPropertyOptional()
-    discount_percentage?: number;
+    discount_percentage?: string;
     @ApiPropertyOptional()
     quantity_remaining?: number;
     @ApiPropertyOptional()
@@ -38,12 +38,18 @@ export class AppOfferListResponseDto {
     category_name?: string;
     @ApiPropertyOptional()
     distance_km?: number;
+    @ApiPropertyOptional()
+    currency_symbol?: string;
 
     order_cutoff_at?: Date;
     content?: string[];
 
     private static fromMinorUnits(amount: number | null | undefined): number {
         return Number(((amount ?? 0) / 100).toFixed(2));
+    }
+
+    private static toPercentage(value: number | string | null | undefined): string {
+        return `${Math.round(Number(value ?? 0))}%`;
     }
 
     private static toDistanceKm(rawRow?: Record<string, any>): number {
@@ -58,9 +64,9 @@ export class AppOfferListResponseDto {
             title: offer.title,
             short_description: offer.short_description,
             main_image_url: offer.main_image_url,
-            original_price_minor: AppOfferListResponseDto.fromMinorUnits(offer.original_price_minor),
-            offer_price_minor: AppOfferListResponseDto.fromMinorUnits(offer.offer_price_minor),
-            discount_percentage: offer.discount_percentage,
+            original_price: AppOfferListResponseDto.fromMinorUnits(offer.original_price_minor),
+            offer_price: AppOfferListResponseDto.fromMinorUnits(offer.offer_price_minor),
+            discount_percentage: AppOfferListResponseDto.toPercentage(offer.discount_percentage),
             quantity_remaining: offer.quantity_remaining,
             is_featured: offer.is_featured,
             is_order_time_limited: offer.is_order_time_limited,
@@ -69,6 +75,7 @@ export class AppOfferListResponseDto {
             business_name: offer.business?.display_name,
             category_name: offer.category?.name,
             distance_km: AppOfferListResponseDto.toDistanceKm(rawRow),
+            currency_symbol: offer.business?.city?.country?.currency_symbol,
             order_cutoff_at: offer.order_cutoff_at,
             content: offer.contents,
         };
@@ -114,8 +121,10 @@ export class OfferResponseDto {
     original_price_minor?: number;
     @ApiProperty()
     offer_price_minor?: number;
+    @ApiPropertyOptional()
+    currency_symbol?: string;
     @ApiProperty()
-    discount_percentage?: number;
+    discount_percentage?: string;
     @ApiProperty()
     quantity_total?: number;
     @ApiProperty()
@@ -183,6 +192,10 @@ export class OfferResponseDto {
         return Number(((amount ?? 0) / 100).toFixed(2));
     }
 
+    private static toPercentage(value: number | string | null | undefined): string {
+        return `${Math.round(Number(value ?? 0))}%`;
+    }
+
     static fromEntity(offer: Offer): OfferResponseDto {
         const timezone = (offer as any).country?.timezone;
         return {
@@ -200,7 +213,8 @@ export class OfferResponseDto {
             pickup_end_local: OfferResponseDto.toLocal(offer.pickup_end, timezone),
             original_price_minor: OfferResponseDto.fromMinorUnits(offer.original_price_minor),
             offer_price_minor: OfferResponseDto.fromMinorUnits(offer.offer_price_minor),
-            discount_percentage: offer.discount_percentage,
+            currency_symbol: offer.business?.city?.country?.currency_symbol,
+            discount_percentage: OfferResponseDto.toPercentage(offer.discount_percentage),
             quantity_total: offer.quantity_total,
             quantity_remaining: offer.quantity_remaining,
             is_order_time_limited: offer.is_order_time_limited,

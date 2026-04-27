@@ -8,7 +8,6 @@ import { UpdateBusinessDto } from './dto/update-business.dto';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { BusinessResponseDto } from './dto/business-response.dto';
-import { Country } from '../countries/entities/country.entity';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffUser } from '../staff/entities/staff-user.entity';
 import { DataSource } from 'typeorm';
@@ -27,7 +26,6 @@ export class BusinessesService {
     constructor(
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
-        @InjectRepository(Country)
         @InjectRepository(Offer)
         private offersRepository: Repository<Offer>,
         private dataSource: DataSource,
@@ -198,8 +196,8 @@ export class BusinessesService {
         const query = this.businessesRepository
             .createQueryBuilder('business')
             .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.city', 'city')
             .where('business.is_archived = :isArchived', { isArchived: false })
-            .andWhere('business.is_active = :isActive', { isActive: true })
             .andWhere('business.status = :status', { status: BusinessStatus.ACTIVE });
 
         if (search) {
@@ -261,9 +259,9 @@ export class BusinessesService {
         const query = this.businessesRepository
             .createQueryBuilder('business')
             .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.city', 'city')
             .where('business.id = :id', { id })
             .andWhere('business.is_archived = :isArchived', { isArchived: false })
-            .andWhere('business.is_active = :isActive', { isActive: true })
             .andWhere('business.status = :status', { status: BusinessStatus.ACTIVE });
 
         if (hasCoordinates) {
@@ -279,14 +277,14 @@ export class BusinessesService {
             APP_BUSINESS_ACTIVE_OFFERS_LIMIT;
         const activeOffers = await this.offersRepository
             .createQueryBuilder('offer')
+            .leftJoinAndSelect('offer.business', 'offer_business')
+            .leftJoinAndSelect('offer_business.city', 'offer_city')
+            .leftJoinAndSelect('offer_city.country', 'offer_country')
+            .leftJoinAndSelect('offer.category', 'offer_category')
             .where('offer.business_id = :businessId', { businessId: business.id })
             .andWhere('offer.is_archived = :isArchived', { isArchived: false })
-            .andWhere('offer.is_active = :isActive', { isActive: true })
             .andWhere('offer.status = :status', { status: OfferStatus.PUBLISHED })
-            .andWhere('offer.quantity_remaining > 0')
-            .andWhere('offer.pickup_end >= :now', { now: new Date() })
-            .orderBy('offer.is_featured', 'DESC')
-            .addOrderBy('offer.pickup_start', 'ASC')
+            .orderBy('offer.created_at', 'DESC')
             .take(activeOffersLimit)
             .getMany();
 

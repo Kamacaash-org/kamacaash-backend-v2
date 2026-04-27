@@ -101,14 +101,14 @@ export class MobileUserOrderDto {
   amount!: number;
   status!: OrderStatus;
   paymentStatus!: PaymentStatus;
-  reservedAt!: string;
+  reservedAt?: string;
   completedAt?: string;
   pinCode!: string;
   paymentMethod!: string;
   cancellationReason!: string;
   package!: any;
   business!: any;
-  hasUserReviewedBusiness!: boolean;
+  hasUserReviewedBusiness?: boolean;
 
   private static fromMinorUnits(amount: number | null | undefined): number {
     return Number(((amount ?? 0) / 100).toFixed(2));
