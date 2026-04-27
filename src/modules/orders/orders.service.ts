@@ -110,6 +110,7 @@ export class OrdersService {
                 actorId: user.id,
                 note: `Reserved ${quantity} item(s) for ${holdDurationMinutes} minutes.`,
             });
+            await this.syncUserStatistics(manager, saved.user_id);
 
             return saved;
         });
@@ -170,6 +171,7 @@ export class OrdersService {
                 actorId: userId,
                 note: 'Payment confirmed by app API.',
             });
+            await this.syncUserStatistics(manager, saved.user_id);
 
             return { order: saved, wasExpired: false };
         });
@@ -222,6 +224,7 @@ export class OrdersService {
                 actorId: userId,
                 note: cancelOrderReservationDto.reason ?? 'Reservation cancelled by user.',
             });
+            await this.syncUserStatistics(manager, saved.user_id);
 
             return { order: saved, wasExpired: false };
         });
@@ -366,6 +369,7 @@ export class OrdersService {
                 actorName: actor?.full_name ?? actor?.email,
                 note: adminCancelOrderDto.reason,
             });
+            await this.syncUserStatistics(manager, saved.user_id);
 
             return saved;
         });
@@ -425,6 +429,7 @@ export class OrdersService {
                 actorName: actor?.full_name ?? actor?.email,
                 note: 'Pickup pin code verified and order completed.',
             });
+            await this.syncUserStatistics(manager, saved.user_id);
 
             return saved;
         });
@@ -751,6 +756,7 @@ export class OrdersService {
             actorType: 'SYSTEM',
             note: 'Hold expired and reserved quantity was restored.',
         });
+        await this.syncUserStatistics(manager, saved.user_id);
 
         return saved;
     }
@@ -777,6 +783,7 @@ export class OrdersService {
             actorType: 'SYSTEM',
             note: `Pickup window ended at least ${noShowGraceMinutes} minute(s) ago; order marked no-show.`,
         });
+        await this.syncUserStatistics(manager, saved.user_id);
 
         return saved;
     }
@@ -827,5 +834,62 @@ export class OrdersService {
         });
 
         await manager.save(OrderEvent, event);
+    }
+
+    private async syncUserStatistics(manager: EntityManager, userId: string): Promise<void> {
+        const stats = await manager
+            .createQueryBuilder(Order, 'order')
+            .select('COUNT(order.id)', 'total_orders')
+            .addSelect(
+                `COALESCE(SUM(CASE WHEN order.status IN (:...completedStatuses) THEN 1 ELSE 0 END), 0)`,
+                'total_completed_orders',
+            )
+            .addSelect(
+                `COALESCE(SUM(CASE WHEN order.status IN (:...cancelledStatuses) THEN 1 ELSE 0 END), 0)`,
+                'total_cancelled_orders',
+            )
+            .addSelect('COALESCE(SUM(order.discount_minor), 0)', 'total_saved_amount_minor')
+            .addSelect(
+                `COALESCE(SUM(CASE
+                    WHEN order.payment_status = :confirmedPaymentStatus
+                        OR order.status IN (:...paidStatuses)
+                    THEN order.total_amount_minor
+                    ELSE 0
+                END), 0)`,
+                'total_spent_amount_minor',
+            )
+            .where('order.user_id = :userId', { userId })
+            .setParameters({
+                completedStatuses: [OrderStatus.COLLECTED, OrderStatus.CLOSED],
+                cancelledStatuses: [
+                    OrderStatus.CANCELLED,
+                    OrderStatus.CANCELLED_BY_USER,
+                    OrderStatus.CANCELLED_BY_ADMIN,
+                    OrderStatus.EXPIRED,
+                    OrderStatus.NO_SHOW,
+                ],
+                paidStatuses: [
+                    OrderStatus.PAID,
+                    OrderStatus.READY_FOR_PICKUP,
+                    OrderStatus.COLLECTED,
+                    OrderStatus.CLOSED,
+                ],
+                confirmedPaymentStatus: PaymentStatus.CONFIRMED,
+            })
+            .getRawOne<{
+                total_orders: string;
+                total_completed_orders: string;
+                total_cancelled_orders: string;
+                total_saved_amount_minor: string;
+                total_spent_amount_minor: string;
+            }>();
+
+        await manager.update(AppUser, { id: userId }, {
+            total_orders: Number(stats?.total_orders ?? 0),
+            total_completed_orders: Number(stats?.total_completed_orders ?? 0),
+            total_cancelled_orders: Number(stats?.total_cancelled_orders ?? 0),
+            total_saved_amount_minor: Number(stats?.total_saved_amount_minor ?? 0),
+            total_spent_amount_minor: Number(stats?.total_spent_amount_minor ?? 0),
+        });
     }
 }

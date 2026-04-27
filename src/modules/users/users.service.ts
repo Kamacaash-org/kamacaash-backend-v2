@@ -6,6 +6,7 @@ import { UserDevice } from './entities/user-device.entity';
 import { UserRole, UserStatus } from '../../common/entities/enums/all.enums';
 import { PaginationDto, PaginatedResponseDto } from '../../common/dto/pagination.dto';
 import { RegisterAppUserDto, VerifyAppUserDto, ResendOtpDto, UpdateAppUserProfileDto } from './app/dto/app-user-auth.dto';
+import { AppUserProfileResponseDto } from './app/dto/app-user-profile-response.dto';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { JwtService } from '@nestjs/jwt';
@@ -135,12 +136,14 @@ export class UsersService {
         });
     }
 
-    async getProfileFromApp(currentUser: any): Promise<ApiResponseDto<any>> {
+    async getProfileFromApp(currentUser: any): Promise<ApiResponseDto<{ user: AppUserProfileResponseDto }>> {
         const user = await this.findOne(currentUser.id);
-        return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.PROFILE_FETCHED, { user });
+        return ApiResponseDto.success(DEFAULT_MESSAGES.AUTH.PROFILE_FETCHED, {
+            user: AppUserProfileResponseDto.fromEntity(user),
+        });
     }
 
-    async updateProfileFromApp(userId: string, dto: UpdateAppUserProfileDto, files?: ProfileUploadFiles): Promise<ApiResponseDto<any>> {
+    async updateProfileFromApp(userId: string, dto: UpdateAppUserProfileDto, files?: ProfileUploadFiles): Promise<ApiResponseDto<{ user: AppUserProfileResponseDto }>> {
         const updatePayload: Partial<AppUser> = {};
 
         if (dto.first_name) updatePayload.first_name = dto.first_name;
@@ -165,7 +168,9 @@ export class UsersService {
         }
 
         const updatedUser = await this.findOne(userId);
-        return ApiResponseDto.success('Profile updated successfully', { user: updatedUser });
+        return ApiResponseDto.success('Profile updated successfully', {
+            user: AppUserProfileResponseDto.fromEntity(updatedUser),
+        });
     }
 
     private async upsertDevice(userId: string, dto: RegisterAppUserDto) {

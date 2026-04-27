@@ -10,16 +10,18 @@ import {
     UploadedFiles,
 } from '@nestjs/common';
 import { UsersService } from '../users.service';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiOkResponse } from '@nestjs/swagger';
 import {
     RegisterAppUserDto,
     VerifyAppUserDto,
     ResendOtpDto,
     UpdateAppUserProfileDto,
 } from './dto/app-user-auth.dto';
+import { AppUserProfileResponseDto } from './dto/app-user-profile-response.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UploadedFile } from '../../../common/types/uploaded-file.type';
+import { ApiResponseDto } from '../../../common/dto/api-response.dto';
 
 type ProfileUploadFiles = {
     profile_image_url?: UploadedFile[];
@@ -52,7 +54,8 @@ export class AppUsersController {
     @ApiBearerAuth()
     @Get('profile')
     @ApiOperation({ summary: 'Get app user profile' })
-    getProfile(@Request() req) {
+    @ApiOkResponse({ type: AppUserProfileResponseDto })
+    getProfile(@Request() req): Promise<ApiResponseDto<{ user: AppUserProfileResponseDto }>> {
         return this.usersService.getProfileFromApp(req.user);
     }
 
@@ -62,11 +65,12 @@ export class AppUsersController {
     @Put('profile')
     @ApiConsumes('multipart/form-data', 'application/json')
     @ApiOperation({ summary: 'Update app user profile' })
+    @ApiOkResponse({ type: AppUserProfileResponseDto })
     updateProfile(
         @Body() updateDto: UpdateAppUserProfileDto,
         @Request() req,
         @UploadedFiles() files: ProfileUploadFiles,
-    ) {
+    ): Promise<ApiResponseDto<{ user: AppUserProfileResponseDto }>> {
         return this.usersService.updateProfileFromApp(req.user.id, updateDto, files);
     }
 }

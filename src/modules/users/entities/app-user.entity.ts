@@ -49,6 +49,27 @@ export class AppUser extends BaseSoftDeleteEntity {
     @Column({ type: 'char', length: 3, default: 'USD' })
     preferred_currency: string;
 
+    @Column({ type: 'int', default: 0 })
+    total_orders: number;
+
+    @Column({ type: 'int', default: 0 })
+    total_completed_orders: number;
+
+    @Column({ type: 'int', default: 0 })
+    total_cancelled_orders: number;
+
+    @Column({ type: 'int', default: 0 })
+    total_saved_amount_minor: number;
+
+    @Column({ type: 'int', default: 0 })
+    total_spent_amount_minor: number;
+
+    @Column({ type: 'int', default: 0 })
+    current_points: number;
+
+    @Column({ type: 'int', default: 0 })
+    lifetime_points_earned: number;
+
     @Column({ type: 'jsonb', default: { email: true, sms: true, push: true } })
     notification_preferences: Record<string, boolean>;
 
