@@ -80,8 +80,6 @@ export class Order extends BaseEntity {
     })
     total_amount_minor!: number;
 
-    @Column({ type: 'char', length: 3 })
-    currency_code?: string;
 
     @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.HOLD })
     status!: OrderStatus;

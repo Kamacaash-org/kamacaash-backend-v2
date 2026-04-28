@@ -31,7 +31,7 @@ export class FavoritesService {
 
         let favorite = await this.favoritesRepository.findOne({
             where: { user_id: userId, business_id: businessId },
-            relations: ['business', 'business.category'],
+            relations: ['business', 'business.category', 'business.city'],
         });
 
         if (favorite && !favorite.is_removed) {
@@ -77,7 +77,7 @@ export class FavoritesService {
     ): Promise<ApiResponseDto<AppFavoriteResponseDto>> {
         const favorite = await this.favoritesRepository.findOne({
             where: { user_id: userId, business_id: businessId, is_removed: false },
-            relations: ['business', 'business.category'],
+            relations: ['business', 'business.category', 'business.city'],
         });
 
         if (!favorite) {
@@ -106,11 +106,11 @@ export class FavoritesService {
             .createQueryBuilder('favorite')
             .leftJoinAndSelect('favorite.business', 'business')
             .leftJoinAndSelect('business.category', 'category')
+            .leftJoinAndSelect('business.city', 'city')
             .where('favorite.user_id = :userId', { userId })
             .andWhere('favorite.is_removed = :isRemoved', { isRemoved: false })
             .andWhere('favorite.is_visible = :isVisible', { isVisible: true })
             .andWhere('business.is_archived = :isArchived', { isArchived: false })
-            .andWhere('business.is_active = :isActive', { isActive: true })
             .andWhere('business.status = :status', { status: BusinessStatus.ACTIVE });
 
         if (search) {
@@ -179,7 +179,7 @@ export class FavoritesService {
     private async getFavoriteWithBusiness(id: string): Promise<Favorite> {
         const favorite = await this.favoritesRepository.findOne({
             where: { id },
-            relations: ['business', 'business.category'],
+            relations: ['business', 'business.category', 'business.city'],
         });
 
         if (!favorite) throw new NotFoundException(`${DEFAULT_MESSAGES.FAVORITE.NOT_FOUND}: ${id}`);

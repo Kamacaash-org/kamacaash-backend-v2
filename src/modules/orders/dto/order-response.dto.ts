@@ -27,8 +27,6 @@ export class OrderResponseDto {
   discount_minor!: number;
   @ApiProperty()
   total_amount_minor!: number;
-  @ApiProperty()
-  currency_code!: string;
   @ApiProperty({ enum: OrderStatus })
   status!: OrderStatus;
   @ApiProperty({ enum: PaymentStatus })
@@ -79,7 +77,6 @@ export class OrderResponseDto {
       tax_minor: OrderResponseDto.fromMinorUnits(order.tax_minor),
       discount_minor: OrderResponseDto.fromMinorUnits(order.discount_minor),
       total_amount_minor: OrderResponseDto.fromMinorUnits(order.total_amount_minor),
-      currency_code: order.currency_code ?? '',
       status: order.status,
       payment_status: order.payment_status,
       hold_expires_at: order.hold_expires_at,

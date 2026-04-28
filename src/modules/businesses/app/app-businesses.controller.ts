@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { ApiResponseDto } from '../../../common/dto/api-response.dto';
 import { BusinessesService } from '../businesses.service';
@@ -27,7 +27,7 @@ export class AppBusinessesController {
   @ApiParam({ name: 'id', description: 'Business id' })
   @ApiOkResponse({ type: AppBusinessDetailDto })
   findOneActive(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Query() queryDto: AppBusinessQueryDto,
   ): Promise<ApiResponseDto<AppBusinessDetailDto>> {
     return this.businessesService.findOneActiveForApp(id, queryDto);

@@ -179,7 +179,6 @@ export class BusinessesService {
         )`,
                 { origin: JSON.stringify(origin), range: radiusKm * 1000 },
             )
-            .andWhere('business.is_active = :isActive', { isActive: true })
             .getMany();
 
         return ApiResponseDto.success(

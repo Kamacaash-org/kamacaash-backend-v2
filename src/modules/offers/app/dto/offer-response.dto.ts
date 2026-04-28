@@ -7,6 +7,8 @@ export class AppOfferListResponseDto {
     @ApiProperty()
     id!: string;
     @ApiProperty()
+    category_id!: string;
+    @ApiProperty()
     title!: string;
     @ApiPropertyOptional()
     short_description?: string;
@@ -62,6 +64,7 @@ export class AppOfferListResponseDto {
         return {
             id: offer.id,
             title: offer.title,
+            category_id: offer.business.category_id ?? '',
             short_description: offer.short_description,
             main_image_url: offer.main_image_url,
             original_price: AppOfferListResponseDto.fromMinorUnits(offer.original_price_minor),

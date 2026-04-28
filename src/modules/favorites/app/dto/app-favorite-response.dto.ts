@@ -19,7 +19,7 @@ class AppFavoriteBusinessDto {
   category_name?: string;
 
   @ApiProperty()
-  city!: string;
+  city?: string;
 
 
   @ApiPropertyOptional()
@@ -73,7 +73,7 @@ export class AppFavoriteResponseDto {
           logo_url: favorite.business.logo_url,
           short_description: favorite.business.short_description,
           category_name: favorite.business.category?.name,
-          city: favorite.business.city.name,
+          city: favorite.business.city?.name,
           address_line: favorite.business.address_line,
           latitude: lat,
           longitude: lng,

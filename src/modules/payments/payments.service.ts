@@ -29,7 +29,6 @@ export class PaymentsService {
             user_id: userId,
             business_id: order.business_id,
             amount_minor: order.total_amount_minor,
-            currency_code: order.currency_code,
             provider: provider as any,
             status: PaymentStatus.PENDING,
             subtotal_minor: order.subtotal_minor,

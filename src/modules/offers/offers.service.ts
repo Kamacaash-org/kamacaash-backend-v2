@@ -112,6 +112,7 @@ export class OffersService {
     }
 
     async findAllForApp(paginationDto: PaginationDto, queryParams?: any): Promise<ApiResponseDto<AppOfferListResponseDto[]>> {
+        console.log('Query params for findAllForApp:', queryParams);
         const { page = 1, limit = 10, order = 'DESC', search } = paginationDto;
         const query = this.offersRepository
             .createQueryBuilder('offer')

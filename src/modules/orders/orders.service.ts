@@ -244,16 +244,16 @@ export class OrdersService {
             this.configService.get<OrderStatus[]>('orders.adminPendingStatuses') ?? ADMIN_PENDING_ORDER_STATUSES;
 
         const orders = await this.ordersRepository
-            .createQueryBuilder('order')
-            .leftJoinAndSelect('order.user', 'user')
-            .leftJoinAndSelect('order.business', 'business')
-            .leftJoinAndSelect('order.offer', 'offer')
-            .where('order.business_id = :businessId', { businessId })
-            .andWhere('order.status IN (:...statuses)', { statuses })
-            .andWhere('order.pickup_time >= :start', { start })
-            .andWhere('order.pickup_time < :end', { end })
-            .orderBy('order.pickup_time', 'ASC')
-            .addOrderBy('order.created_at', 'ASC')
+            .createQueryBuilder('ord')
+            .leftJoinAndSelect('ord.user', 'user')
+            .leftJoinAndSelect('ord.business', 'business')
+            .leftJoinAndSelect('ord.offer', 'offer')
+            .where('ord.business_id = :businessId', { businessId })
+            .andWhere('ord.status IN (:...statuses)', { statuses })
+            .andWhere('ord.pickup_time >= :start', { start })
+            .andWhere('ord.pickup_time < :end', { end })
+            .orderBy('ord.pickup_time', 'ASC')
+            .addOrderBy('ord.created_at', 'ASC')
             .getMany();
 
         return ApiResponseDto.success(
@@ -304,16 +304,16 @@ export class OrdersService {
         const { start, end } = await this.getBusinessTodayRange(businessId);
 
         const orders = await this.ordersRepository
-            .createQueryBuilder('order')
-            .leftJoinAndSelect('order.user', 'user')
-            .leftJoinAndSelect('order.business', 'business')
-            .leftJoinAndSelect('order.offer', 'offer')
-            .where('order.business_id = :businessId', { businessId })
-            .andWhere('order.status = :status', { status: OrderStatus.NO_SHOW })
+            .createQueryBuilder('ord')
+            .leftJoinAndSelect('ord.user', 'user')
+            .leftJoinAndSelect('ord.business', 'business')
+            .leftJoinAndSelect('ord.offer', 'offer')
+            .where('ord.business_id = :businessId', { businessId })
+            .andWhere('ord.status = :status', { status: OrderStatus.NO_SHOW })
             .andWhere('offer.pickup_end >= :start', { start })
             .andWhere('offer.pickup_end < :end', { end })
             .orderBy('offer.pickup_end', 'DESC')
-            .addOrderBy('order.no_show_at', 'DESC')
+            .addOrderBy('ord.no_show_at', 'DESC')
             .getMany();
 
         return ApiResponseDto.success(
@@ -838,27 +838,27 @@ export class OrdersService {
 
     private async syncUserStatistics(manager: EntityManager, userId: string): Promise<void> {
         const stats = await manager
-            .createQueryBuilder(Order, 'order')
-            .select('COUNT(order.id)', 'total_orders')
+            .createQueryBuilder(Order, 'ord')
+            .select('COUNT(ord.id)', 'total_orders')
             .addSelect(
-                `COALESCE(SUM(CASE WHEN order.status IN (:...completedStatuses) THEN 1 ELSE 0 END), 0)`,
+                `COALESCE(SUM(CASE WHEN ord.status IN (:...completedStatuses) THEN 1 ELSE 0 END), 0)`,
                 'total_completed_orders',
             )
             .addSelect(
-                `COALESCE(SUM(CASE WHEN order.status IN (:...cancelledStatuses) THEN 1 ELSE 0 END), 0)`,
+                `COALESCE(SUM(CASE WHEN ord.status IN (:...cancelledStatuses) THEN 1 ELSE 0 END), 0)`,
                 'total_cancelled_orders',
             )
-            .addSelect('COALESCE(SUM(order.discount_minor), 0)', 'total_saved_amount_minor')
+            .addSelect('COALESCE(SUM(ord.discount_minor), 0)', 'total_saved_amount_minor')
             .addSelect(
                 `COALESCE(SUM(CASE
-                    WHEN order.payment_status = :confirmedPaymentStatus
-                        OR order.status IN (:...paidStatuses)
-                    THEN order.total_amount_minor
+                    WHEN ord.payment_status = :confirmedPaymentStatus
+                        OR ord.status IN (:...paidStatuses)
+                    THEN ord.total_amount_minor
                     ELSE 0
                 END), 0)`,
                 'total_spent_amount_minor',
             )
-            .where('order.user_id = :userId', { userId })
+            .where('ord.user_id = :userId', { userId })
             .setParameters({
                 completedStatuses: [OrderStatus.COLLECTED, OrderStatus.CLOSED],
                 cancelledStatuses: [
