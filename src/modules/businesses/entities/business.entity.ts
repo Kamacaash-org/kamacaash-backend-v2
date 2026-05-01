@@ -16,7 +16,7 @@ import {
     BusinessStatus,
     BusinessVerificationStatus,
 } from '../../../common/entities/enums/all.enums';
-import { City } from 'src/modules/cities/entities/city.entity';
+import { City } from '../../cities/entities/city.entity';
 
 @Entity('businesses')
 export class Business extends BaseSoftDeleteEntity {
