@@ -31,6 +31,8 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { ChangePasswordDto } from '../dto/ChangePassword.dto';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { UploadedFile } from '../../../common/types/uploaded-file.type';
+import { StaffProfileResponseDto } from '../dto/staff-profile-response.dto';
+import { UpdateOwnStaffProfileDto } from '../dto/update-own-staff-profile.dto';
 
 type StaffUploadFiles = {
     profile_image_url?: UploadedFile[];
@@ -53,6 +55,24 @@ export class AdminStaffController {
         return this.staffService.verify2fa(verifyDto);
     }
 
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Get('me/profile')
+    @ApiOperation({ summary: 'Get logged-in staff profile' })
+    getOwnProfile(@Request() req): Promise<ApiResponseDto<StaffProfileResponseDto>> {
+        return this.staffService.getOwnProfile(req.user.id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @Put('me/profile')
+    @ApiOperation({ summary: 'Update logged-in staff profile' })
+    updateOwnProfile(
+        @Body() dto: UpdateOwnStaffProfileDto,
+        @Request() req,
+    ): Promise<ApiResponseDto<StaffProfileResponseDto>> {
+        return this.staffService.updateOwnProfile(req.user.id, dto);
+    }
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()

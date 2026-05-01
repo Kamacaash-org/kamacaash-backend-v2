@@ -8,6 +8,7 @@ import { BusinessContract } from './entities/business-contract.entity';
 import { Country } from '../countries/entities/country.entity';
 import { StaffUser } from '../staff/entities/staff-user.entity';
 import { Offer } from '../offers/entities/offer.entity';
+import { S3Module } from '../../common/s3.module';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { Offer } from '../offers/entities/offer.entity';
             StaffUser,
             Offer,
         ]),
+        S3Module,
     ],
     controllers: [AdminBusinessesController, AppBusinessesController],
     providers: [BusinessesService],

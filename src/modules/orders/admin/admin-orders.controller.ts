@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Request, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query, Request, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -19,7 +20,7 @@ import { AdminCloseNoShowOrderDto } from '../dto/admin-close-no-show-order.dto';
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class AdminOrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService) { }
 
   @Get('business/:businessId/pending/today')
   @ApiOperation({ summary: 'Get today pending orders by business ID' })
@@ -31,34 +32,46 @@ export class AdminOrdersController {
     return this.ordersService.getTodayPendingOrdersByBusiness(businessId);
   }
 
-  @Get('business/:businessId/completed/today')
+  @Get('business/:businessId/completed')
   @ApiOperation({ summary: 'Get today completed orders by business ID' })
   @ApiParam({ name: 'businessId', description: 'Business id' })
+  @ApiQuery({ name: 'start', required: false, description: 'Optional start date/datetime filter' })
+  @ApiQuery({ name: 'end', required: false, description: 'Optional end date/datetime filter' })
   @ApiOkResponse({ type: AdminOrderResponseDto, isArray: true })
   getTodayCompletedOrdersByBusiness(
     @Param('businessId') businessId: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
   ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-    return this.ordersService.getTodayCompletedOrdersByBusiness(businessId);
+    return this.ordersService.getCompletedOrdersByBusiness(businessId, start, end);
   }
 
-  @Get('business/:businessId/cancelled/today')
+  @Get('business/:businessId/cancelled')
   @ApiOperation({ summary: 'Get today cancelled orders by business ID' })
   @ApiParam({ name: 'businessId', description: 'Business id' })
+  @ApiQuery({ name: 'start', required: false, description: 'Optional start date/datetime filter' })
+  @ApiQuery({ name: 'end', required: false, description: 'Optional end date/datetime filter' })
   @ApiOkResponse({ type: AdminOrderResponseDto, isArray: true })
   getTodayCancelledOrdersByBusiness(
     @Param('businessId') businessId: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
   ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-    return this.ordersService.getTodayCancelledOrdersByBusiness(businessId);
+    return this.ordersService.getCancelledOrdersByBusiness(businessId, start, end);
   }
 
-  @Get('business/:businessId/no-show/today')
+  @Get('business/:businessId/no-show')
   @ApiOperation({ summary: 'Get today no-show orders by business ID' })
   @ApiParam({ name: 'businessId', description: 'Business id' })
+  @ApiQuery({ name: 'start', required: false, description: 'Optional start date/datetime filter' })
+  @ApiQuery({ name: 'end', required: false, description: 'Optional end date/datetime filter' })
   @ApiOkResponse({ type: AdminOrderResponseDto, isArray: true })
   getTodayNoShowOrdersByBusiness(
     @Param('businessId') businessId: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
   ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-    return this.ordersService.getTodayNoShowOrdersByBusiness(businessId);
+    return this.ordersService.getNoShowOrdersByBusiness(businessId, start, end);
   }
 
   @Patch(':id/cancel')
@@ -69,7 +82,7 @@ export class AdminOrdersController {
     @Param('id') id: string,
     @Body() adminCancelOrderDto: AdminCancelOrderDto,
     @Request() req,
-  ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+  ): Promise<ApiResponseDto<null>> {
     return this.ordersService.adminCancelOrder(id, adminCancelOrderDto, req.user);
   }
 
@@ -81,7 +94,7 @@ export class AdminOrdersController {
     @Param('id') id: string,
     @Body() adminCompleteOrderDto: AdminCompleteOrderDto,
     @Request() req,
-  ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+  ): Promise<ApiResponseDto<null>> {
     return this.ordersService.adminCompleteOrder(id, adminCompleteOrderDto, req.user);
   }
 
@@ -93,7 +106,7 @@ export class AdminOrdersController {
     @Param('id') id: string,
     @Body() adminCloseNoShowOrderDto: AdminCloseNoShowOrderDto,
     @Request() req,
-  ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
+  ): Promise<ApiResponseDto<null>> {
     return this.ordersService.adminCloseNoShowOrder(id, adminCloseNoShowOrderDto, req.user);
   }
 }

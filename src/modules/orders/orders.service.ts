@@ -12,10 +12,7 @@ import {
     EntityManager,
     LessThanOrEqual,
     In,
-    And,
-    MoreThanOrEqual,
-    LessThan,
-    Not,
+    SelectQueryBuilder,
 } from 'typeorm';
 import { Interval } from '@nestjs/schedule';
 import { Order } from './entities/order.entity';
@@ -243,17 +240,12 @@ export class OrdersService {
         const statuses =
             this.configService.get<OrderStatus[]>('orders.adminPendingStatuses') ?? ADMIN_PENDING_ORDER_STATUSES;
 
-        const orders = await this.ordersRepository
-            .createQueryBuilder('ord')
-            .leftJoinAndSelect('ord.user', 'user')
-            .leftJoinAndSelect('ord.business', 'business')
-            .leftJoinAndSelect('ord.offer', 'offer')
+        const orders = await this.createAdminOrderSummaryQuery()
             .where('ord.business_id = :businessId', { businessId })
             .andWhere('ord.status IN (:...statuses)', { statuses })
-            .andWhere('ord.pickup_time >= :start', { start })
-            .andWhere('ord.pickup_time < :end', { end })
-            .orderBy('ord.pickup_time', 'ASC')
-            .addOrderBy('ord.created_at', 'ASC')
+            .andWhere('ord.created_at >= :start', { start })
+            .andWhere('ord.created_at < :end', { end })
+            .orderBy('ord.created_at', 'ASC')
             .getMany();
 
         return ApiResponseDto.success(
@@ -262,37 +254,20 @@ export class OrdersService {
         );
     }
 
-    async getTodayCompletedOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-        const { start, end } = await this.getBusinessTodayRange(businessId);
+    async getCompletedOrdersByBusiness(
+        businessId: string,
+        startParam?: string,
+        endParam?: string,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessRangeFromParams(businessId, startParam, endParam);
 
-        const orders = await this.ordersRepository.find({
-            where: {
-                business_id: businessId,
-                status: OrderStatus.COLLECTED,
-                collected_at: And(MoreThanOrEqual(start), LessThan(end)),
-            },
-            relations: ['user', 'business', 'offer'],
-            order: { collected_at: 'DESC' },
-        });
-
-        return ApiResponseDto.success(
-            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
-            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
-        );
-    }
-
-    async getTodayCancelledOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-        const { start, end } = await this.getBusinessTodayRange(businessId);
-
-        const orders = await this.ordersRepository.find({
-            where: {
-                business_id: businessId,
-                status: OrderStatus.CANCELLED_BY_ADMIN,
-                cancelled_at: And(MoreThanOrEqual(start), LessThan(end)),
-            },
-            relations: ['user', 'business', 'offer'],
-            order: { cancelled_at: 'DESC' },
-        });
+        const orders = await this.createAdminOrderSummaryQuery()
+            .where('ord.business_id = :businessId', { businessId })
+            .andWhere('ord.status = :status', { status: OrderStatus.COLLECTED })
+            .andWhere('ord.created_at >= :start', { start })
+            .andWhere('ord.created_at < :end', { end })
+            .orderBy('ord.collected_at', 'DESC')
+            .getMany();
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
@@ -300,14 +275,35 @@ export class OrdersService {
         );
     }
 
-    async getTodayNoShowOrdersByBusiness(businessId: string): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
-        const { start, end } = await this.getBusinessTodayRange(businessId);
+    async getCancelledOrdersByBusiness(
+        businessId: string,
+        startParam?: string,
+        endParam?: string,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessRangeFromParams(businessId, startParam, endParam);
 
-        const orders = await this.ordersRepository
-            .createQueryBuilder('ord')
-            .leftJoinAndSelect('ord.user', 'user')
-            .leftJoinAndSelect('ord.business', 'business')
-            .leftJoinAndSelect('ord.offer', 'offer')
+        const orders = await this.createAdminOrderSummaryQuery()
+            .where('ord.business_id = :businessId', { businessId })
+            .andWhere('ord.status = :status', { status: OrderStatus.CANCELLED_BY_ADMIN })
+            .andWhere('ord.cancelled_at >= :start', { start })
+            .andWhere('ord.cancelled_at < :end', { end })
+            .orderBy('ord.cancelled_at', 'DESC')
+            .getMany();
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
+            orders.map((order) => AdminOrderResponseDto.fromEntity(order)),
+        );
+    }
+
+    async getNoShowOrdersByBusiness(
+        businessId: string,
+        startParam?: string,
+        endParam?: string,
+    ): Promise<ApiResponseDto<AdminOrderResponseDto[]>> {
+        const { start, end } = await this.getBusinessRangeFromParams(businessId, startParam, endParam);
+
+        const orders = await this.createAdminOrderSummaryQuery()
             .where('ord.business_id = :businessId', { businessId })
             .andWhere('ord.status = :status', { status: OrderStatus.NO_SHOW })
             .andWhere('offer.pickup_end >= :start', { start })
@@ -326,8 +322,8 @@ export class OrdersService {
         id: string,
         adminCancelOrderDto: AdminCancelOrderDto,
         actor: any,
-    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
-        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+    ): Promise<ApiResponseDto<null>> {
+        await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
             if (order.status === OrderStatus.CANCELLED_BY_ADMIN || order.status === OrderStatus.CANCELLED_BY_USER) {
@@ -374,10 +370,9 @@ export class OrdersService {
             return saved;
         });
 
-        const withRelations = await this.getAdminOrderWithRelations(result.id);
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.ADMIN_CANCELLED,
-            AdminOrderResponseDto.fromEntity(withRelations),
+            null
         );
     }
 
@@ -385,8 +380,8 @@ export class OrdersService {
         id: string,
         adminCompleteOrderDto: AdminCompleteOrderDto,
         actor: any,
-    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
-        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+    ): Promise<ApiResponseDto<null>> {
+        await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
             if (order.status === OrderStatus.COLLECTED) {
@@ -416,7 +411,7 @@ export class OrdersService {
             order.pickup_verified_by = actor?.id ?? order.pickup_verified_by;
 
             await manager.save(offer);
-            await manager.increment(Business, { id: order.business_id }, 'completed_orders', 1);
+            // await manager.increment(Business, { id: order.business_id }, 'completed_orders', 1);
             const saved = await manager.save(Order, order);
             await this.recordOrderEvent(manager, {
                 orderId: saved.id,
@@ -433,17 +428,15 @@ export class OrdersService {
 
             return saved;
         });
-
-        const withRelations = await this.getAdminOrderWithRelations(result.id);
-        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, AdminOrderResponseDto.fromEntity(withRelations));
+        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, null);
     }
 
     async adminCloseNoShowOrder(
         id: string,
         adminCloseNoShowOrderDto: AdminCloseNoShowOrderDto,
         actor: any,
-    ): Promise<ApiResponseDto<AdminOrderResponseDto>> {
-        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+    ): Promise<ApiResponseDto<null>> {
+        await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
             if (order.status !== OrderStatus.NO_SHOW) {
@@ -484,10 +477,9 @@ export class OrdersService {
             return saved;
         });
 
-        const withRelations = await this.getAdminOrderWithRelations(result.id);
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.NO_SHOW_CLOSED,
-            AdminOrderResponseDto.fromEntity(withRelations),
+            null,
         );
     }
 
@@ -604,6 +596,56 @@ export class OrdersService {
         return order;
     }
 
+    private createAdminOrderSummaryQuery(): SelectQueryBuilder<Order> {
+        const query = this.ordersRepository
+            .createQueryBuilder('ord')
+            .leftJoinAndSelect('ord.user', 'user')
+            .leftJoinAndSelect('ord.business', 'business')
+            .leftJoinAndSelect('business.city', 'city')
+            .leftJoinAndSelect('city.country', 'country')
+            .leftJoinAndSelect('ord.offer', 'offer');
+
+        query.select([
+            'ord.id',
+            'ord.order_number',
+            'ord.user_id',
+            'ord.business_id',
+            'ord.offer_id',
+            'ord.quantity',
+            'ord.unit_price_minor',
+            'ord.subtotal_minor',
+            'ord.tax_minor',
+            'ord.discount_minor',
+            'ord.total_amount_minor',
+            'ord.status',
+            'ord.payment_status',
+            'ord.pickup_time',
+            'ord.cancelled_at',
+            'ord.collected_at',
+            'ord.no_show_at',
+            'ord.cancellation_reason',
+            'ord.created_at',
+            'user.id',
+            'user.first_name',
+            'user.last_name',
+            'user.phone_e164',
+            'user.email',
+            'business.id',
+            'business.display_name',
+            'business.city_id',
+            'city.id',
+            'country.id',
+            'country.default_timezone',
+            'offer.id',
+            'offer.title',
+            'offer.main_image_url',
+            'offer.pickup_start',
+            'offer.pickup_end',
+        ]);
+
+        return query;
+    }
+
     private async getAdminOrderWithRelations(id: string): Promise<Order> {
         const order = await this.ordersRepository.findOne({
             where: { id },
@@ -631,6 +673,30 @@ export class OrdersService {
         return this.getTodayRangeForTimezone('Africa/Mogadishu');
     }
 
+    private async getBusinessRangeFromParams(
+        businessId: string,
+        startParam?: string,
+        endParam?: string,
+    ): Promise<{ start: Date; end: Date }> {
+        const business = await this.businessesRepository.findOne({ where: { id: businessId } });
+        if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${businessId}`);
+
+        const timezone = 'Africa/Mogadishu';
+        const todayRange = this.getTodayRangeForTimezone(timezone);
+        const start = startParam
+            ? this.parseDateRangeParam(startParam, timezone, 'start')
+            : todayRange.start;
+        const end = endParam
+            ? this.parseDateRangeParam(endParam, timezone, 'end')
+            : todayRange.end;
+
+        if (start >= end) {
+            throw new BadRequestException('start must be earlier than end');
+        }
+
+        return { start, end };
+    }
+
     private getTodayRangeForTimezone(timezone: string): { start: Date; end: Date } {
         const todayParts = this.getZonedDateParts(new Date(), timezone);
         const start = this.zonedTimeToUtc(timezone, {
@@ -651,6 +717,33 @@ export class OrdersService {
         });
 
         return { start, end };
+    }
+
+    private parseDateRangeParam(
+        value: string,
+        timezone: string,
+        boundary: 'start' | 'end',
+    ): Date {
+        const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+        if (dateOnlyMatch) {
+            const [, year, month, day] = dateOnlyMatch;
+            return this.zonedTimeToUtc(timezone, {
+                year: Number(year),
+                month: Number(month),
+                day: Number(day) + (boundary === 'end' ? 1 : 0),
+                hour: 0,
+                minute: 0,
+                second: 0,
+            });
+        }
+
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) {
+            throw new BadRequestException(`Invalid ${boundary} date: ${value}`);
+        }
+
+        return parsed;
     }
 
     private zonedTimeToUtc(

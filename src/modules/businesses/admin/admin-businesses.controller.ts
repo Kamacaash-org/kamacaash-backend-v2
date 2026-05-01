@@ -10,6 +10,8 @@ import {
     UseGuards,
     Request,
     Patch,
+    UseInterceptors,
+    UploadedFiles,
 } from '@nestjs/common';
 import { BusinessesService } from '../businesses.service';
 import { CreateBusinessDto } from '../dto/create-business.dto';
@@ -22,6 +24,16 @@ import { BusinessResponseDto } from '../dto/business-response.dto';
 import { FindNearbyBusinessesDto } from '../dto/find-nearby-businesses.dto';
 import { ToggleBusinessStatusDto } from '../dto/toggle-business-status.dto';
 import { BusinessVerificationStatus } from '../../../common/entities/enums/all.enums';
+import { BusinessProfileResponseDto } from '../dto/business-profile-response.dto';
+import { UpdateBusinessSettingsDto } from '../dto/update-business-settings.dto';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { UploadedFile } from '../../../common/types/uploaded-file.type';
+
+type BusinessSettingsUploadFiles = {
+    logo_url?: UploadedFile[];
+    banner_url?: UploadedFile[];
+    gallery_images?: UploadedFile[];
+};
 
 @ApiTags('admin/businesses')
 @Controller('admin/businesses')
@@ -59,6 +71,14 @@ export class AdminBusinessesController {
 
     @UseGuards(JwtAuthGuard)
     @ApiBearerAuth()
+    @Get(':id/profile')
+    @ApiOperation({ summary: 'Get business profile by business ID' })
+    getBusinessProfile(@Param('id') id: string): Promise<ApiResponseDto<BusinessProfileResponseDto>> {
+        return this.businessesService.getBusinessProfile(id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
     @Put(':id')
     @ApiOperation({ summary: 'Update business' })
     update(
@@ -67,6 +87,24 @@ export class AdminBusinessesController {
         @Request() req,
     ): Promise<ApiResponseDto<BusinessResponseDto>> {
         return this.businessesService.update(id, updateBusinessDto, req.user);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @ApiBearerAuth()
+    @UseInterceptors(FileFieldsInterceptor([
+        { name: 'logo_url', maxCount: 1 },
+        { name: 'banner_url', maxCount: 1 },
+        { name: 'gallery_images', maxCount: 20 },
+    ]))
+    @Patch(':id/settings')
+    @ApiOperation({ summary: 'Update business settings fields' })
+    updateBusinessSettings(
+        @Param('id') id: string,
+        @Body() dto: UpdateBusinessSettingsDto,
+        @UploadedFiles() files: BusinessSettingsUploadFiles,
+        @Request() req,
+    ): Promise<ApiResponseDto<BusinessProfileResponseDto>> {
+        return this.businessesService.updateBusinessSettings(id, dto, req.user, files);
     }
 
     @UseGuards(JwtAuthGuard)

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
@@ -11,7 +11,7 @@ import { BusinessResponseDto } from './dto/business-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { StaffUser } from '../staff/entities/staff-user.entity';
 import { DataSource } from 'typeorm';
-import { BusinessStatus, BusinessVerificationStatus, OfferStatus } from '../../common/entities/enums/all.enums';
+import { BusinessStatus, BusinessVerificationStatus, OfferStatus, UserRole } from '../../common/entities/enums/all.enums';
 import { BusinessVerificationListDto } from './dto/business-verification.dto';
 import { Offer } from '../offers/entities/offer.entity';
 import { AppBusinessQueryDto } from './app/dto/app-business-query.dto';
@@ -21,6 +21,17 @@ import {
 } from './app/dto/app-business-response.dto';
 import { APP_BUSINESS_ACTIVE_OFFERS_LIMIT } from '../../config/businesses.config';
 import { ToggleBusinessStatusDto } from './dto/toggle-business-status.dto';
+import { BusinessProfileResponseDto } from './dto/business-profile-response.dto';
+import { UpdateBusinessSettingsDto } from './dto/update-business-settings.dto';
+import { S3UploadService } from '../../common/services/s3-upload.service';
+import { UploadedFile } from '../../common/types/uploaded-file.type';
+
+type BusinessSettingsUploadFiles = {
+    logo_url?: UploadedFile[];
+    banner_url?: UploadedFile[];
+    gallery_images?: UploadedFile[];
+};
+
 @Injectable()
 export class BusinessesService {
     constructor(
@@ -30,6 +41,7 @@ export class BusinessesService {
         private offersRepository: Repository<Offer>,
         private dataSource: DataSource,
         private readonly configService: ConfigService,
+        private readonly s3UploadService: S3UploadService,
     ) { }
 
     private normalizeMerchantAccounts(
@@ -44,6 +56,41 @@ export class BusinessesService {
             isActive: true,
             isVerified: false,
         }));
+    }
+
+    private normalizeBusinessOpenHours(
+        openHours?: Array<Record<string, unknown>>,
+    ): Array<{ day_of_week: number; opens_at?: string; closes_at?: string }> | undefined {
+        if (openHours === undefined) return undefined;
+        if (!Array.isArray(openHours)) {
+            throw new BadRequestException('open_hours must be an array');
+        }
+
+        return openHours.map((entry, index) => {
+            if (!entry || typeof entry !== 'object') {
+                throw new BadRequestException(`open_hours[${index}] must be an object`);
+            }
+
+            const day_of_week = Number(entry.day_of_week);
+            if (!Number.isInteger(day_of_week) || day_of_week < 1 || day_of_week > 7) {
+                throw new BadRequestException(`open_hours[${index}].day_of_week must be a number between 1 and 7`);
+            }
+
+            const opens_at =
+                entry.opens_at === undefined || entry.opens_at === null || entry.opens_at === ''
+                    ? undefined
+                    : String(entry.opens_at);
+            const closes_at =
+                entry.closes_at === undefined || entry.closes_at === null || entry.closes_at === ''
+                    ? undefined
+                    : String(entry.closes_at);
+
+            return {
+                day_of_week,
+                opens_at,
+                closes_at,
+            };
+        });
     }
 
 
@@ -160,6 +207,37 @@ export class BusinessesService {
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.BUSINESS.FETCHED,
             BusinessResponseDto.fromEntity(business),
+        );
+    }
+
+    async getBusinessProfile(id: string): Promise<ApiResponseDto<BusinessProfileResponseDto>> {
+        const business = await this.businessesRepository
+            .createQueryBuilder('business')
+            .where('business.id = :id', { id })
+            .andWhere('business.is_archived = :isArchived', { isArchived: false })
+            .select([
+                'business.id',
+                'business.legal_name',
+                'business.display_name',
+                'business.logo_url',
+                'business.banner_url',
+                'business.gallery_images',
+                'business.description',
+                'business.short_description',
+                'business.email',
+                'business.phone',
+                'business.secondary_phone',
+                'business.website_url',
+                'business.social_links',
+                'business.metadata',
+            ])
+            .getOne();
+
+        if (!business) throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.FETCHED,
+            BusinessProfileResponseDto.fromEntity(business),
         );
     }
 
@@ -450,6 +528,95 @@ export class BusinessesService {
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.BUSINESS.UPDATED,
             BusinessResponseDto.fromEntity(updated),
+        );
+    }
+
+    async updateBusinessSettings(
+        id: string,
+        dto: UpdateBusinessSettingsDto,
+        currentUser: any,
+        files?: BusinessSettingsUploadFiles,
+    ): Promise<ApiResponseDto<BusinessProfileResponseDto>> {
+        const business = await this.businessesRepository.findOne({
+            where: {
+                id,
+                is_archived: false,
+            },
+        });
+
+        if (!business) {
+            throw new NotFoundException(`${DEFAULT_MESSAGES.BUSINESS.NOT_FOUND}: ${id}`);
+        }
+
+        const canManageAnyBusiness =
+            currentUser?.role === UserRole.SUPER_ADMIN || currentUser?.role === UserRole.ADMIN;
+        const belongsToBusiness = currentUser?.business_id === id;
+
+        if (!canManageAnyBusiness && !belongsToBusiness) {
+            throw new ForbiddenException('You are not allowed to update this business settings');
+        }
+
+        const oldUrlsToDelete: string[] = [];
+        const logoFile = files?.logo_url?.[0];
+        const bannerFile = files?.banner_url?.[0];
+        const galleryFiles = files?.gallery_images;
+
+        let nextLogoUrl = business.logo_url;
+        let nextBannerUrl = business.banner_url;
+        let nextGalleryImages = business.gallery_images;
+
+        if (logoFile) {
+            nextLogoUrl = await this.s3UploadService.uploadFile(logoFile, 'businesses/logos');
+            if (business.logo_url) {
+                oldUrlsToDelete.push(business.logo_url);
+            }
+        }
+
+        if (bannerFile) {
+            nextBannerUrl = await this.s3UploadService.uploadFile(bannerFile, 'businesses/banners');
+            if (business.banner_url) {
+                oldUrlsToDelete.push(business.banner_url);
+            }
+        }
+
+        if (galleryFiles?.length) {
+            nextGalleryImages = await this.s3UploadService.uploadFiles(galleryFiles, 'businesses/gallery');
+            if (business.gallery_images?.length) {
+                oldUrlsToDelete.push(...business.gallery_images);
+            }
+        }
+
+        const normalizedOpenHours = this.normalizeBusinessOpenHours(dto.open_hours);
+
+        Object.assign(business, {
+            logo_url: nextLogoUrl,
+            banner_url: nextBannerUrl,
+            gallery_images: nextGalleryImages,
+            description: dto.description ?? business.description,
+            short_description: dto.short_description ?? business.short_description,
+            display_name: dto.display_name ?? business.display_name,
+            email: dto.email ?? business.email,
+            phone: dto.phone ?? business.phone,
+            secondary_phone: dto.secondary_phone ?? business.secondary_phone,
+            website_url: dto.website_url ?? business.website_url,
+            social_links: dto.social_links ?? business.social_links,
+            metadata: normalizedOpenHours !== undefined
+                ? {
+                    ...(business.metadata ?? {}),
+                    open_hours: normalizedOpenHours,
+                }
+                : business.metadata,
+            updated_by: currentUser?.id ?? business.updated_by,
+        });
+
+        const updated = await this.businessesRepository.save(business);
+        if (oldUrlsToDelete.length) {
+            await this.s3UploadService.deleteManyByUrls(oldUrlsToDelete);
+        }
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.BUSINESS.UPDATED,
+            BusinessProfileResponseDto.fromEntity(updated),
         );
     }
 

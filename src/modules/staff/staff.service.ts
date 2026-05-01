@@ -20,6 +20,8 @@ import { StaffAuthUserDto } from './dto/staff-auth-user.dto';
 import { Country } from '../countries/entities/country.entity';
 import { S3UploadService } from '../../common/services/s3-upload.service';
 import { UploadedFile } from '../../common/types/uploaded-file.type';
+import { StaffProfileResponseDto } from './dto/staff-profile-response.dto';
+import { UpdateOwnStaffProfileDto } from './dto/update-own-staff-profile.dto';
 
 type StaffUploadFiles = {
     profile_image_url?: UploadedFile[];
@@ -337,6 +339,82 @@ export class StaffService {
     async findByEmail(email: string): Promise<StaffUser | undefined> {
         const staff = await this.staffRepository.findOne({ where: { email } });
         return staff || undefined;
+    }
+
+    async getOwnProfile(staffId: string): Promise<ApiResponseDto<StaffProfileResponseDto>> {
+        const staff = await this.staffRepository
+            .createQueryBuilder('staff')
+            .leftJoinAndSelect('staff.business', 'business')
+            .where('staff.id = :staffId', { staffId })
+            .select([
+                'staff.id',
+                'staff.username',
+                'staff.email',
+                'staff.phone_e164',
+                'staff.first_name',
+                'staff.last_name',
+                'staff.full_name',
+                'staff.profile_image_url',
+                'staff.role',
+                'staff.two_factor_enabled',
+                'staff.business_id',
+                'business.id',
+                'business.display_name',
+                'business.legal_name',
+                'business.logo_url',
+            ])
+            .getOne();
+
+        if (!staff) throw new NotFoundException(DEFAULT_MESSAGES.STAFF.NOT_FOUND);
+
+        return ApiResponseDto.success(
+            DEFAULT_MESSAGES.AUTH.PROFILE_FETCHED,
+            StaffProfileResponseDto.fromEntity(staff),
+        );
+    }
+
+    async updateOwnProfile(
+        staffId: string,
+        dto: UpdateOwnStaffProfileDto,
+    ): Promise<ApiResponseDto<StaffProfileResponseDto>> {
+        const staff = await this.staffRepository.findOne({ where: { id: staffId } });
+        if (!staff) throw new NotFoundException(DEFAULT_MESSAGES.STAFF.NOT_FOUND);
+
+        if (dto.username && dto.username !== staff.username) {
+            const existing = await this.staffRepository.findOne({ where: { username: dto.username } });
+            if (existing && existing.id !== staffId) {
+                throw new ConflictException('Staff username already exists');
+            }
+        }
+
+        if (dto.email && dto.email !== staff.email) {
+            const existing = await this.staffRepository.findOne({ where: { email: dto.email } });
+            if (existing && existing.id !== staffId) {
+                throw new ConflictException(DEFAULT_MESSAGES.STAFF.EMAIL_ALREADY_EXISTS);
+            }
+        }
+
+        if (dto.phone_e164 && dto.phone_e164 !== staff.phone_e164) {
+            const existing = await this.staffRepository.findOne({ where: { phone_e164: dto.phone_e164 } });
+            if (existing && existing.id !== staffId) {
+                throw new ConflictException(DEFAULT_MESSAGES.STAFF.PHONE_ALREADY_EXISTS);
+            }
+        }
+
+        Object.assign(staff, {
+            username: dto.username ?? staff.username,
+            email: dto.email ?? staff.email,
+            phone_e164: dto.phone_e164 ?? staff.phone_e164,
+            first_name: dto.first_name ?? staff.first_name,
+            last_name: dto.last_name ?? staff.last_name,
+            two_factor_enabled: dto.two_factor_enabled ?? staff.two_factor_enabled,
+            updated_by: staffId,
+        });
+        staff.full_name = `${staff.first_name ?? ''} ${staff.last_name ?? ''}`.trim() || staff.full_name;
+
+        await this.staffRepository.save(staff);
+
+        return this.getOwnProfile(staffId);
     }
 
     private async buildStaffFileUpdates(

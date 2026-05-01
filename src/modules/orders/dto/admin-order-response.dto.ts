@@ -4,13 +4,13 @@ import { Order } from '../entities/order.entity';
 
 class AdminOrderUserSummaryDto {
   @ApiProperty()
-  id: string;
+  id!: string;
 
   @ApiPropertyOptional()
   full_name?: string;
 
   @ApiPropertyOptional()
-  phone_e164?: string;
+  phone?: string;
 
   @ApiPropertyOptional()
   email?: string;
@@ -18,19 +18,19 @@ class AdminOrderUserSummaryDto {
 
 class AdminOrderBusinessSummaryDto {
   @ApiProperty()
-  id: string;
+  id!: string;
 
-  @ApiProperty()
-  display_name: string;
+  @ApiPropertyOptional()
+  display_name?: string;
 
 }
 
 class AdminOrderOfferSummaryDto {
   @ApiProperty()
-  id: string;
+  id!: string;
 
   @ApiProperty()
-  title: string;
+  title!: string;
 
   @ApiPropertyOptional()
   main_image_url?: string;
@@ -38,47 +38,41 @@ class AdminOrderOfferSummaryDto {
 
 export class AdminOrderResponseDto {
   @ApiProperty()
-  id: string;
+  id!: string;
 
   @ApiProperty()
-  order_number: string;
+  order_number!: string;
 
   @ApiProperty()
-  user_id: string;
+  quantity!: number;
 
   @ApiProperty()
-  business_id: string;
+  unit_price!: number;
 
   @ApiProperty()
-  offer_id: string;
+  subtotal!: number;
 
   @ApiProperty()
-  quantity: number;
+  tax_minor?: number;
 
   @ApiProperty()
-  unit_price_minor: number;
+  discount!: number;
 
   @ApiProperty()
-  subtotal_minor: number;
-
-  @ApiProperty()
-  tax_minor: number;
-
-  @ApiProperty()
-  discount_minor: number;
-
-  @ApiProperty()
-  total_amount_minor: number;
+  total_amount!: number;
 
 
   @ApiProperty({ enum: OrderStatus })
-  status: OrderStatus;
+  status!: OrderStatus;
 
   @ApiProperty({ enum: PaymentStatus })
-  payment_status: PaymentStatus;
+  payment_status!: PaymentStatus;
 
   @ApiPropertyOptional()
-  pickup_time?: Date;
+  pickup_start_time?: Date;
+
+  @ApiPropertyOptional()
+  pickup_end_time?: Date;
 
   @ApiPropertyOptional()
   cancelled_at?: Date;
@@ -91,10 +85,13 @@ export class AdminOrderResponseDto {
 
 
   @ApiPropertyOptional()
+  timezone?: string;
+
+  @ApiPropertyOptional()
   cancellation_reason?: string;
 
   @ApiProperty()
-  created_at: Date;
+  created_at?: Date;
 
   @ApiPropertyOptional({ type: AdminOrderUserSummaryDto })
   user?: AdminOrderUserSummaryDto;
@@ -104,37 +101,51 @@ export class AdminOrderResponseDto {
 
   @ApiPropertyOptional({ type: AdminOrderOfferSummaryDto })
   offer?: AdminOrderOfferSummaryDto;
+  @ApiProperty()
+  is_urgent!: boolean;
 
   private static fromMinorUnits(amount: number | null | undefined): number {
     return Number(((amount ?? 0) / 100).toFixed(2));
+  }
+
+  private static isWithinNext30Minutes(date?: Date | null): boolean {
+    if (!date) return false;
+
+    const now = new Date().getTime();
+    const target = new Date(date).getTime();
+
+    const diffMs = target - now;
+
+    return diffMs > 0 && diffMs <= 30 * 60 * 1000;
   }
 
   static fromEntity(order: Order): AdminOrderResponseDto {
     return {
       id: order.id,
       order_number: order.order_number,
-      user_id: order.user_id,
-      business_id: order.business_id,
-      offer_id: order.offer_id,
       quantity: order.quantity,
-      unit_price_minor: AdminOrderResponseDto.fromMinorUnits(order.unit_price_minor),
-      subtotal_minor: AdminOrderResponseDto.fromMinorUnits(order.subtotal_minor),
+      unit_price: AdminOrderResponseDto.fromMinorUnits(order.unit_price_minor),
+      subtotal: AdminOrderResponseDto.fromMinorUnits(order.subtotal_minor),
       tax_minor: AdminOrderResponseDto.fromMinorUnits(order.tax_minor),
-      discount_minor: AdminOrderResponseDto.fromMinorUnits(order.discount_minor),
-      total_amount_minor: AdminOrderResponseDto.fromMinorUnits(order.total_amount_minor),
+      discount: AdminOrderResponseDto.fromMinorUnits(order.discount_minor),
+      total_amount: AdminOrderResponseDto.fromMinorUnits(order.total_amount_minor),
       status: order.status,
       payment_status: order.payment_status,
-      pickup_time: order.pickup_time,
+      pickup_start_time: order.offer.pickup_start,
+      pickup_end_time: order.offer.pickup_end,
+      timezone: order.business.city.country.default_timezone,
       cancelled_at: order.cancelled_at,
       collected_at: order.collected_at,
       no_show_at: order.no_show_at ?? undefined,
       cancellation_reason: order.cancellation_reason,
       created_at: order.created_at,
+      is_urgent: AdminOrderResponseDto.isWithinNext30Minutes(order.pickup_time),
+
       user: order.user
         ? {
           id: order.user.id,
-          full_name: order.user.full_name,
-          phone_e164: order.user.phone_e164,
+          full_name: `${order.user.first_name} ${order.user.last_name}`.trim(),
+          phone: order.user.phone_e164,
           email: order.user.email,
         }
         : undefined,

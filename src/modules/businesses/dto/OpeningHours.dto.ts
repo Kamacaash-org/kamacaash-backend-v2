@@ -6,9 +6,11 @@ import {
     Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 
 export class CreateBusinessOpeningHourDto {
     @ApiProperty({ minimum: 1, maximum: 7 })
+    @Type(() => Number)
     @IsNumber()
     @Min(1)
     @Max(7)
