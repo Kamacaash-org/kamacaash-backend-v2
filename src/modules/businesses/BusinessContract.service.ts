@@ -14,7 +14,7 @@ import {
     SignedBusinessContractRowDto,
     UploadContractDto,
 } from './dto/business-contract.dto';
-import { BusinessVerificationStatus, PayoutSchedule } from 'src/common/entities/enums/all.enums';
+import { BusinessVerificationStatus, PayoutSchedule } from '../../common/entities/enums/all.enums';
 
 @Injectable()
 export class BusinessContractService {

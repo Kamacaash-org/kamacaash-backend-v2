@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { BusinessStatus } from 'src/common/entities/enums/all.enums';
+import { BusinessStatus } from '../../../common/entities/enums/all.enums';
 
 class MerchantAccountDto {
   @ApiProperty({ example: 'Kamacaash Foods Ltd' })
