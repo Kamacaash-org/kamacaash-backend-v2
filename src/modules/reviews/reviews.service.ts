@@ -24,7 +24,7 @@ export class ReviewsService {
         // Check if order is completed
         if (order.status !== OrderStatus.COLLECTED) {
             // Ideally only review collected/completed orders
-            // throw new BadRequestException('Can only review collected orders');
+            throw new BadRequestException('Can only review collected orders');
         }
 
         // Check if already reviewed

@@ -31,6 +31,28 @@
 $ npm install
 ```
 
+## Firebase Cloud Messaging
+
+Configure the following environment variables before using the push notification test endpoint:
+
+```bash
+DATABASE_URL=
+
+# Option 1: provide the whole Firebase service account JSON as one string
+FIREBASE_SERVICE_ACCOUNT_JSON=
+
+# Option 2: provide the Firebase service account fields separately
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Optional
+FIREBASE_DATABASE_URL=
+
+# Comma-separated static test device tokens for /api/v1/notifications/test
+FCM_TEST_DEVICE_TOKENS=
+```
+
 ## Compile and run the project
 
 ```bash
