@@ -5,7 +5,7 @@ export class RegisterAppUserDto {
     @ApiProperty({ example: '+252615000000', description: 'Phone number in E.164 format' })
     @IsString()
     @IsNotEmpty()
-    phone: string;
+    phone!: string;
 
     @ApiPropertyOptional({ example: 'SO', description: 'Country ISO code for timezone/currency defaults' })
     @IsOptional()
@@ -61,19 +61,19 @@ export class VerifyAppUserDto {
     @ApiProperty({ example: '+252615000000', description: 'Phone number' })
     @IsString()
     @IsNotEmpty()
-    phone: string;
+    phone!: string;
 
     @ApiProperty({ example: '123456', description: 'OTP Code' })
     @IsString()
     @IsNotEmpty()
-    otp: string;
+    otp!: string;
 }
 
 export class ResendOtpDto {
     @ApiProperty({ example: '+252615000000', description: 'Phone number' })
     @IsString()
     @IsNotEmpty()
-    phone: string;
+    phone!: string;
 }
 
 export class UpdateAppUserProfileDto {

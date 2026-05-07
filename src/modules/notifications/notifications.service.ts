@@ -159,7 +159,6 @@ export class NotificationsService {
         this.firebaseApp = initializeApp(
             {
                 credential: cert(serviceAccount),
-                databaseURL: this.configService.get<string>('firebase.databaseUrl'),
             },
             appName,
         );

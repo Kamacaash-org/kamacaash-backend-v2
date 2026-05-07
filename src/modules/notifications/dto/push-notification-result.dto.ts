@@ -1,7 +1,7 @@
 export class PushNotificationResultDto {
-    successCount: number;
-    failureCount: number;
-    responses: Array<{
+    successCount?: number;
+    failureCount?: number;
+    responses?: Array<{
         success: boolean;
         messageId?: string;
         error?: string;
