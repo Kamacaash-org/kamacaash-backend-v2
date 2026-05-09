@@ -39,6 +39,7 @@ export enum PayoutSchedule {
 export enum PayoutMethod {
     BANK_TRANSFER = 'BANK_TRANSFER',
     MOBILE_MONEY = 'MOBILE_MONEY',
+    MWALLET_ACCOUNT = 'MWALLET_ACCOUNT',
     EVC = 'EVC',
     JEEB = 'JEEB',
     E_DAHAB = 'E_DAHAB',
@@ -73,10 +74,12 @@ export enum OrderStatus {
 }
 
 export enum PaymentStatus {
+    INITIATED = 'INITIATED',
     PENDING = 'PENDING',
     PROCESSING = 'PROCESSING',
     CONFIRMED = 'CONFIRMED',
     FAILED = 'FAILED',
+    REJECTED = 'REJECTED',
     REFUNDED = 'REFUNDED',
     PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED',
 }
@@ -89,6 +92,30 @@ export enum PaymentProvider {
     WAAFI = 'WAAFI',
     BANK = 'BANK',
     CARD = 'CARD',
+}
+
+export enum PaymentLogType {
+    REQUEST = 'REQUEST',
+    RESPONSE = 'RESPONSE',
+    CALLBACK = 'CALLBACK',
+    ERROR = 'ERROR',
+}
+
+export enum PaymentEventType {
+    INITIATED = 'INITIATED',
+    PUSH_SENT = 'PUSH_SENT',
+    PENDING = 'PENDING',
+    APPROVED = 'APPROVED',
+    FAILED = 'FAILED',
+    REJECTED = 'REJECTED',
+    RETRIED = 'RETRIED',
+}
+
+export enum RewardTransactionType {
+    EARNED = 'EARNED',
+    REDEEMED = 'REDEEMED',
+    EXPIRED = 'EXPIRED',
+    ADJUSTED = 'ADJUSTED',
 }
 
 export enum ReviewStatus {

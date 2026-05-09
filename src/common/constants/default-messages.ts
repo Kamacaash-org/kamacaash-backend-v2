@@ -87,6 +87,7 @@ export const DEFAULT_MESSAGES = {
     FETCHED: 'Order fetched successfully',
     CREATED: 'Order reserved successfully',
     PAID: 'Order marked as paid successfully',
+    PAYMENT_PENDING: 'Payment request sent successfully',
     CANCELLED: 'Order reservation cancelled successfully',
     ADMIN_CANCELLED: 'Order cancelled successfully',
     COMPLETED: 'Order completed successfully',
@@ -103,6 +104,13 @@ export const DEFAULT_MESSAGES = {
     CANNOT_COMPLETE: 'Order cannot be completed',
     NOT_NO_SHOW: 'Order is not in no-show state',
     INVALID_PICKUP_CODE: 'Invalid pickup pin code',
+  },
+  PAYMENT: {
+    INITIATED: 'Payment request created successfully',
+    APPROVED: 'Payment approved successfully',
+    PENDING: 'Payment request sent and is pending confirmation',
+    REJECTED: 'Payment was rejected by the user',
+    FAILED: 'Payment could not be completed',
   },
   FAVORITE: {
     ADDED: 'Business added to favorites successfully',

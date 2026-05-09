@@ -1,9 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import { IsEnum, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { PaymentProvider, PayoutMethod } from '../../../common/entities/enums/all.enums';
 
-export class MarkOrderPaidDto {
+export class InitiatePushPaymentDto {
     @ApiPropertyOptional({ enum: PaymentProvider, example: PaymentProvider.WAAFI, default: PaymentProvider.WAAFI })
     @IsOptional()
     @IsEnum(PaymentProvider)
@@ -15,26 +14,11 @@ export class MarkOrderPaidDto {
     payment_method?: PayoutMethod = PayoutMethod.MWALLET_ACCOUNT;
 
     @ApiProperty({ example: '252618827482', description: 'Customer WAAFI wallet account number.' })
-    @Transform(({ value, obj }) => value ?? obj?.accountNo ?? obj?.walletNumber)
     @IsString()
     @IsNotEmpty()
     @MaxLength(50)
     @Matches(/^\d+$/, { message: 'account_no must contain only digits' })
     account_no!: string;
-
-    @ApiPropertyOptional({ example: '252618827482', description: 'Legacy camelCase alias for account_no.' })
-    @IsOptional()
-    @IsString()
-    @MaxLength(50)
-    @Matches(/^\d+$/, { message: 'accountNo must contain only digits' })
-    accountNo?: string;
-
-    @ApiPropertyOptional({ example: '252618827482', description: 'Legacy wallet number alias for account_no.' })
-    @IsOptional()
-    @IsString()
-    @MaxLength(50)
-    @Matches(/^\d+$/, { message: 'walletNumber must contain only digits' })
-    walletNumber?: string;
 
     @ApiPropertyOptional({ example: 'WAAFI-REQ-123456', description: 'Client-supplied idempotency key or provider request id.' })
     @IsOptional()

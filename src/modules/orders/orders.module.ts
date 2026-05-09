@@ -7,11 +7,24 @@ import { Order } from './entities/order.entity';
 import { OrderEvent } from './entities/order-event.entity';
 import { Offer } from '../offers/entities/offer.entity';
 import { Business } from '../businesses/entities/business.entity';
+import { PaymentsModule } from '../payments/payments.module';
+import { UsersModule } from '../users/users.module';
+import { RewardsModule } from '../rewards/rewards.module';
+import { ReviewsModule } from '../reviews/reviews.module';
+import { Payment } from '../payments/entities/payment.entity';
+import { OrderHoldsQueueService } from './order-holds-queue.service';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([Order, OrderEvent, Offer, Business])],
+    imports: [
+        TypeOrmModule.forFeature([Order, OrderEvent, Offer, Business]),
+        TypeOrmModule.forFeature([Payment]),
+        PaymentsModule,
+        UsersModule,
+        RewardsModule,
+        ReviewsModule,
+    ],
     controllers: [AppOrdersController, AdminOrdersController],
-    providers: [OrdersService],
+    providers: [OrdersService, OrderHoldsQueueService],
     exports: [OrdersService],
 })
 export class OrdersModule { }

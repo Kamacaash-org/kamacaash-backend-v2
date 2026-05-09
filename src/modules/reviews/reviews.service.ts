@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { Review } from './entities/review.entity';
 import { Order } from '../orders/entities/order.entity';
 import { ReviewStatus, OrderStatus } from '../../common/entities/enums/all.enums';
+import { CreateReviewDto } from './dto/create-review.dto';
+import { QueryReviewsDto } from './dto/query-reviews.dto';
 
 @Injectable()
 export class ReviewsService {
@@ -14,20 +16,16 @@ export class ReviewsService {
         private ordersRepository: Repository<Order>,
     ) { }
 
-    async create(createReviewDto: any, userId: string) {
+    async create(createReviewDto: CreateReviewDto, userId: string): Promise<Review> {
         const { order_id, rating, comment } = createReviewDto;
 
-        // Check if order exists and belongs to user
         const order = await this.ordersRepository.findOne({ where: { id: order_id, user_id: userId } });
         if (!order) throw new NotFoundException('Order not found');
 
-        // Check if order is completed
         if (order.status !== OrderStatus.COLLECTED) {
-            // Ideally only review collected/completed orders
             throw new BadRequestException('Can only review collected orders');
         }
 
-        // Check if already reviewed
         const existing = await this.reviewsRepository.findOne({ where: { order_id } });
         if (existing) throw new BadRequestException('Order already reviewed');
 
@@ -38,13 +36,17 @@ export class ReviewsService {
             offer_id: order.offer_id,
             rating,
             comment,
-            status: ReviewStatus.PENDING
+            status: ReviewStatus.PENDING,
         });
 
-        return this.reviewsRepository.save(review);
+        const saved = await this.reviewsRepository.save(review);
+        order.has_user_reviewed = true;
+        await this.ordersRepository.save(order);
+
+        return saved;
     }
 
-    async findAll(queryParams: any) {
+    async findAll(queryParams: QueryReviewsDto): Promise<Review[]> {
         const where: any = { is_visible: true, status: ReviewStatus.APPROVED };
         if (queryParams.business_id) where.business_id = queryParams.business_id;
         if (queryParams.offer_id) where.offer_id = queryParams.offer_id;
@@ -52,7 +54,7 @@ export class ReviewsService {
         return this.reviewsRepository.find({
             where,
             relations: ['user'],
-            order: { created_at: 'DESC' }
+            order: { created_at: 'DESC' },
         });
     }
 }

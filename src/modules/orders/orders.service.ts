@@ -25,7 +25,13 @@ import { AdminCompleteOrderDto } from './dto/admin-complete-order.dto';
 import { Offer } from '../offers/entities/offer.entity';
 import { AppUser } from '../users/entities/app-user.entity';
 import { Business } from '../businesses/entities/business.entity';
-import { OrderStatus, OfferStatus, PaymentStatus } from '../../common/entities/enums/all.enums';
+import {
+    OrderStatus,
+    OfferStatus,
+    PaymentProvider,
+    PaymentStatus,
+    PayoutMethod,
+} from '../../common/entities/enums/all.enums';
 import { ConfigService } from '@nestjs/config';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
@@ -33,17 +39,20 @@ import { MobileUserOrderDto, OrderResponseDto } from './dto/order-response.dto';
 import { AdminOrderResponseDto } from './dto/admin-order-response.dto';
 import {
     ADMIN_PENDING_ORDER_STATUSES,
-    ORDER_EXPIRY_JOB_INTERVAL_SECONDS,
     ORDER_HOLD_MINUTES,
-    ORDER_NO_SHOW_GRACE_MINUTES,
 } from '../../config/orders.config';
 import { AdminCloseNoShowOrderDto } from './dto/admin-close-no-show-order.dto';
+import { PaymentsService } from '../payments/payments.service';
+import { Payment } from '../payments/entities/payment.entity';
+import { UserStatisticsService } from '../users/user-statistics.service';
+import { RewardsService } from '../rewards/rewards.service';
+import { ReviewRemindersService } from '../reviews/review-reminders.service';
+import { OrderHoldsQueueService } from './order-holds-queue.service';
 
 @Injectable()
 export class OrdersService {
     private readonly logger = new Logger(OrdersService.name);
-    private isRestoringExpiredHolds = false;
-    private isMarkingNoShows = false;
+    private isRestoringExpiredOrders = false;
 
     constructor(
         @InjectRepository(Order)
@@ -52,8 +61,15 @@ export class OrdersService {
         private orderEventsRepository: Repository<OrderEvent>,
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
+        @InjectRepository(Payment)
+        private paymentsRepository: Repository<Payment>,
         private dataSource: DataSource,
         private configService: ConfigService,
+        private paymentsService: PaymentsService,
+        private userStatisticsService: UserStatisticsService,
+        private rewardsService: RewardsService,
+        private reviewRemindersService: ReviewRemindersService,
+        private orderHoldsQueueService: OrderHoldsQueueService,
     ) { }
 
 
@@ -107,12 +123,13 @@ export class OrdersService {
                 actorId: user.id,
                 note: `Reserved ${quantity} item(s) for ${holdDurationMinutes} minutes.`,
             });
-            await this.syncUserStatistics(manager, saved.user_id);
+            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
             return saved;
         });
 
         const withRelations = await this.getOrderWithRelations(created.id);
+        await this.orderHoldsQueueService.scheduleHoldExpiry(created.id, created.hold_expires_at);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CREATED, OrderResponseDto.fromEntity(withRelations));
     }
@@ -122,11 +139,15 @@ export class OrdersService {
         userId: string,
         markOrderPaidDto: MarkOrderPaidDto,
     ): Promise<ApiResponseDto<OrderResponseDto>> {
-        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
+        const preparation = await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOwnedOrderForUpdate(manager, id, userId);
 
             if (order.status === OrderStatus.PAID || order.payment_status === PaymentStatus.CONFIRMED) {
-                throw new ConflictException(DEFAULT_MESSAGES.ORDER.ALREADY_PAID);
+                return {
+                    orderId: order.id,
+                    wasExpired: false,
+                    alreadyPaid: true,
+                };
             }
 
             if (order.status !== OrderStatus.HOLD && order.status !== OrderStatus.PENDING_PAYMENT) {
@@ -135,27 +156,15 @@ export class OrdersService {
 
             if (this.isHoldExpired(order)) {
                 const expired = await this.restoreExpiredHold(manager, order);
-                return { order: expired, wasExpired: true };
+                return { orderId: expired.id, wasExpired: true, alreadyPaid: false };
             }
 
             const previousStatus = order.status;
             const previousPaymentStatus = order.payment_status;
-            const now = new Date();
-
-            order.status = OrderStatus.PAID;
-            order.payment_status = PaymentStatus.CONFIRMED;
-            order.confirmed_at = order.confirmed_at ?? now;
-            order.paid_at = now;
-            (order as any).hold_expires_at = null;
-            order.payment_provider = markOrderPaidDto.payment_provider ?? order.payment_provider;
-            order.payment_method = markOrderPaidDto.payment_method ?? order.payment_method;
-            order.payment_intent_id = markOrderPaidDto.payment_intent_id ?? order.payment_intent_id;
-            order.payment_transaction_id =
-                markOrderPaidDto.payment_transaction_id ?? order.payment_transaction_id;
-
-            const offer = await this.getOfferForUpdate(manager, order.offer_id);
-            offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
-            await manager.save(offer);
+            order.status = OrderStatus.PENDING_PAYMENT;
+            order.payment_status = PaymentStatus.INITIATED;
+            order.payment_provider = markOrderPaidDto.payment_provider ?? PaymentProvider.WAAFI;
+            order.payment_method = markOrderPaidDto.payment_method ?? PayoutMethod.MWALLET_ACCOUNT;
 
             const saved = await manager.save(Order, order);
             await this.recordOrderEvent(manager, {
@@ -166,19 +175,139 @@ export class OrdersService {
                 toPaymentStatus: saved.payment_status,
                 actorType: 'USER',
                 actorId: userId,
-                note: 'Payment confirmed by app API.',
+                note: 'Payment push request initiated.',
             });
-            await this.syncUserStatistics(manager, saved.user_id);
 
-            return { order: saved, wasExpired: false };
+            return { orderId: saved.id, wasExpired: false, alreadyPaid: false };
         });
 
-        if (result.wasExpired) {
+        if (preparation.wasExpired) {
             throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
         }
 
-        const withRelations = await this.getOrderWithRelations(result.order.id);
-        return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.PAID, OrderResponseDto.fromEntity(withRelations));
+        if (preparation.alreadyPaid) {
+            const withRelations = await this.getOrderWithRelations(preparation.orderId);
+            return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.PAID, OrderResponseDto.fromEntity(withRelations), {
+                idempotent: true,
+            });
+        }
+
+        const orderForPayment = await this.ordersRepository.findOne({ where: { id: preparation.orderId, user_id: userId } });
+        if (!orderForPayment) {
+            throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
+        }
+
+        const paymentResult = await this.paymentsService.submitWaafiPushPayment(orderForPayment, userId, markOrderPaidDto);
+
+        const finalizedResult = await this.dataSource.transaction(async (manager: EntityManager) => {
+            const order = await this.getOwnedOrderForUpdate(manager, id, userId);
+            const previousStatus = order.status;
+            const previousPaymentStatus = order.payment_status;
+            const now = new Date();
+            let releasedAfterFailureLimit = false;
+
+            order.payment_provider = paymentResult.payment.provider;
+            order.payment_method = paymentResult.payment.payment_method ?? undefined;
+            order.payment_intent_id = paymentResult.payment.request_id ?? undefined;
+            order.payment_transaction_id =
+                paymentResult.payment.provider_transaction_id ??
+                paymentResult.payment.issuer_transaction_id ??
+                paymentResult.payment.reference_id ??
+                undefined;
+
+            if (paymentResult.payment.status === PaymentStatus.CONFIRMED) {
+                order.status = OrderStatus.PAID;
+                order.payment_status = PaymentStatus.CONFIRMED;
+                order.confirmed_at = order.confirmed_at ?? now;
+                order.paid_at = now;
+                (order as any).hold_expires_at = null;
+
+                const offer = await this.getOfferForUpdate(manager, order.offer_id);
+                offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
+                await manager.save(offer);
+            } else if (paymentResult.payment.status === PaymentStatus.PROCESSING) {
+                order.status = OrderStatus.PENDING_PAYMENT;
+                order.payment_status = PaymentStatus.PROCESSING;
+            } else if (paymentResult.payment.status === PaymentStatus.REJECTED) {
+                order.status = OrderStatus.PENDING_PAYMENT;
+                order.payment_status = PaymentStatus.REJECTED;
+            } else {
+                order.status = OrderStatus.PENDING_PAYMENT;
+                order.payment_status = PaymentStatus.FAILED;
+            }
+
+            if ([PaymentStatus.FAILED, PaymentStatus.REJECTED].includes(order.payment_status)) {
+                const failedAttempts = await manager.count(Payment, {
+                    where: {
+                        order_id: order.id,
+                        status: In([PaymentStatus.FAILED, PaymentStatus.REJECTED]),
+                    },
+                });
+
+                if (failedAttempts >= 3) {
+                    const offer = await this.getOfferForUpdate(manager, order.offer_id);
+                    this.restoreOfferQuantity(offer, order.quantity);
+                    order.status = OrderStatus.CANCELLED_BY_USER;
+                    order.cancelled_at = now;
+                    order.cancellation_reason = 'Reservation released after three unsuccessful payment attempts.';
+                    (order as any).hold_expires_at = null;
+                    await manager.save(offer);
+                    releasedAfterFailureLimit = true;
+                }
+            }
+
+            const saved = await manager.save(Order, order);
+            await this.recordOrderEvent(manager, {
+                orderId: saved.id,
+                fromStatus: previousStatus,
+                toStatus: saved.status,
+                fromPaymentStatus: previousPaymentStatus,
+                toPaymentStatus: saved.payment_status,
+                actorType: 'USER',
+                actorId: userId,
+                note: paymentResult.normalizedMessage,
+            });
+
+            if (saved.payment_status === PaymentStatus.CONFIRMED) {
+                await this.rewardsService.awardApprovedPayment(manager, paymentResult.payment);
+            }
+
+            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
+            return {
+                orderId: saved.id,
+                releasedAfterFailureLimit,
+            };
+        });
+
+        if (
+            paymentResult.payment.status === PaymentStatus.CONFIRMED ||
+            finalizedResult.releasedAfterFailureLimit
+        ) {
+            await this.orderHoldsQueueService.cancelHoldExpiry(finalizedResult.orderId);
+        }
+
+        const withRelations = await this.getOrderWithRelations(finalizedResult.orderId);
+        const meta = {
+            payment: {
+                id: paymentResult.payment.id,
+                status: paymentResult.payment.status,
+                request_id: paymentResult.payment.request_id,
+                reference_id: paymentResult.payment.reference_id,
+                provider_response_code: paymentResult.payment.provider_response_code,
+                provider_error_code: paymentResult.payment.provider_error_code,
+            },
+            idempotent: paymentResult.idempotent,
+        };
+
+        const paymentOutcome = this.getPaymentOutcome(paymentResult);
+        const responseMessage = finalizedResult.releasedAfterFailureLimit
+            ? 'Payment failed. Your reservation was released after three unsuccessful attempts.'
+            : this.getPaymentOutcomeMessage(paymentOutcome, paymentResult.normalizedMessage);
+
+        return ApiResponseDto.success(responseMessage, OrderResponseDto.fromEntity(withRelations), {
+            ...meta,
+            paymentOutcome,
+        });
     }
 
     async cancelReservation(
@@ -221,7 +350,7 @@ export class OrdersService {
                 actorId: userId,
                 note: cancelOrderReservationDto.reason ?? 'Reservation cancelled by user.',
             });
-            await this.syncUserStatistics(manager, saved.user_id);
+            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
             return { order: saved, wasExpired: false };
         });
@@ -230,6 +359,7 @@ export class OrdersService {
             throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
         }
 
+        await this.orderHoldsQueueService.cancelHoldExpiry(result.order.id);
         const withRelations = await this.getOrderWithRelations(result.order.id);
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CANCELLED, OrderResponseDto.fromEntity(withRelations));
     }
@@ -323,7 +453,7 @@ export class OrdersService {
         adminCancelOrderDto: AdminCancelOrderDto,
         actor: any,
     ): Promise<ApiResponseDto<null>> {
-        await this.dataSource.transaction(async (manager: EntityManager) => {
+        const result = await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
             if (order.status === OrderStatus.CANCELLED_BY_ADMIN || order.status === OrderStatus.CANCELLED_BY_USER) {
@@ -365,11 +495,12 @@ export class OrdersService {
                 actorName: actor?.full_name ?? actor?.email,
                 note: adminCancelOrderDto.reason,
             });
-            await this.syncUserStatistics(manager, saved.user_id);
+            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
             return saved;
         });
 
+        await this.orderHoldsQueueService.cancelHoldExpiry(result.id);
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.ADMIN_CANCELLED,
             null
@@ -381,7 +512,7 @@ export class OrdersService {
         adminCompleteOrderDto: AdminCompleteOrderDto,
         actor: any,
     ): Promise<ApiResponseDto<null>> {
-        await this.dataSource.transaction(async (manager: EntityManager) => {
+        const completedOrderId = await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOrderForUpdate(manager, id);
 
             if (order.status === OrderStatus.COLLECTED) {
@@ -424,10 +555,12 @@ export class OrdersService {
                 actorName: actor?.full_name ?? actor?.email,
                 note: 'Pickup pin code verified and order completed.',
             });
-            await this.syncUserStatistics(manager, saved.user_id);
+            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
-            return saved;
+            return saved.id;
         });
+        await this.orderHoldsQueueService.cancelHoldExpiry(completedOrderId);
+        await this.reviewRemindersService.scheduleForCollectedOrder(completedOrderId);
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, null);
     }
 
@@ -483,78 +616,51 @@ export class OrdersService {
         );
     }
 
-    // @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
-    // async restoreExpiredHoldOrders(): Promise<void> {
-    //     if (this.isRestoringExpiredHolds) return;
+    @Interval(10_000)
+    async restoreExpiredUnpaidOrders(): Promise<void> {
+        if (this.isRestoringExpiredOrders) {
+            return;
+        }
 
-    //     this.isRestoringExpiredHolds = true;
-    //     try {
-    //         const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
-    //             const expiredOrders = await manager.find(Order, {
-    //                 where: {
-    //                     status: OrderStatus.HOLD,
-    //                     hold_expires_at: LessThanOrEqual(new Date()),
-    //                 },
-    //                 order: { hold_expires_at: 'ASC' },
-    //                 take: 100,
-    //                 lock: { mode: 'pessimistic_write' },
-    //             });
+        this.isRestoringExpiredOrders = true;
+        try {
+            const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
+                const expiredOrders = await manager.find(Order, {
+                    where: {
+                        status: In([OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT]),
+                        payment_status: In([
+                            PaymentStatus.PENDING,
+                            PaymentStatus.INITIATED,
+                            PaymentStatus.PROCESSING,
+                            PaymentStatus.FAILED,
+                            PaymentStatus.REJECTED,
+                        ]),
+                        hold_expires_at: LessThanOrEqual(new Date()),
+                    },
+                    order: { hold_expires_at: 'ASC' },
+                    take: 100,
+                    lock: { mode: 'pessimistic_write' },
+                });
 
-    //             for (const order of expiredOrders) {
-    //                 await this.restoreExpiredHold(manager, order);
-    //             }
+                for (const order of expiredOrders) {
+                    await this.restoreExpiredHold(manager, order);
+                }
 
-    //             return expiredOrders.length;
-    //         });
+                return expiredOrders.length;
+            });
 
-    //         if (restoredCount > 0) {
-    //             this.logger.log(`Restored ${restoredCount} expired order hold(s).`);
-    //         }
-    //     } catch (error) {
-    //         this.logger.error('Failed to restore expired order holds', error instanceof Error ? error.stack : error);
-    //     } finally {
-    //         this.isRestoringExpiredHolds = false;
-    //     }
-    // }
-
-    // @Interval(ORDER_EXPIRY_JOB_INTERVAL_SECONDS * 1000)
-    // async markNoShowOrders(): Promise<void> {
-    //     if (this.isMarkingNoShows) return;
-
-    //     this.isMarkingNoShows = true;
-    //     try {
-    //         const noShowCount = await this.dataSource.transaction(async (manager: EntityManager) => {
-    //             const noShowGraceMinutes =
-    //                 this.configService.get<number>('orders.noShowGraceMinutes') ?? ORDER_NO_SHOW_GRACE_MINUTES;
-    //             const cutoff = new Date(Date.now() - noShowGraceMinutes * 60 * 1000);
-    //             const orders = await manager
-    //                 .createQueryBuilder(Order, 'order')
-    //                 .innerJoinAndSelect('order.offer', 'offer')
-    //                 .where('order.status IN (:...statuses)', {
-    //                     statuses: [OrderStatus.PAID, OrderStatus.READY_FOR_PICKUP],
-    //                 })
-    //                 .andWhere('offer.pickup_end <= :cutoff', { cutoff })
-    //                 .orderBy('offer.pickup_end', 'ASC')
-    //                 .take(100)
-    //                 .setLock('pessimistic_write')
-    //                 .getMany();
-
-    //             for (const order of orders) {
-    //                 await this.markOrderNoShow(manager, order, noShowGraceMinutes);
-    //             }
-
-    //             return orders.length;
-    //         });
-
-    //         if (noShowCount > 0) {
-    //             this.logger.log(`Marked ${noShowCount} order(s) as no-show.`);
-    //         }
-    //     } catch (error) {
-    //         this.logger.error('Failed to mark no-show orders', error instanceof Error ? error.stack : error);
-    //     } finally {
-    //         this.isMarkingNoShows = false;
-    //     }
-    // }
+            if (restoredCount > 0) {
+                this.logger.log(`Restored ${restoredCount} expired unpaid order(s).`);
+            }
+        } catch (error) {
+            this.logger.error(
+                'Failed to restore expired unpaid orders',
+                error instanceof Error ? error.stack : String(error),
+            );
+        } finally {
+            this.isRestoringExpiredOrders = false;
+        }
+    }
 
     generateOrderNumber(): string {
         return `KAM-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -564,11 +670,17 @@ export class OrdersService {
         return Math.floor(100000 + Math.random() * 900000).toString();
     }
     async findAll(userId: string): Promise<ApiResponseDto<MobileUserOrderDto[]>> {
-        const orders = await this.ordersRepository.find({
-            where: { user_id: userId, status: In([OrderStatus.PAID, OrderStatus.COLLECTED, OrderStatus.NO_SHOW, OrderStatus.CANCELLED_BY_ADMIN, OrderStatus.CANCELLED_BY_USER]) },
-            relations: ['offer', 'business'],
-            order: { created_at: 'DESC' },
-        });
+        const userVisibleStatuses = [
+            OrderStatus.PAID,
+            OrderStatus.READY_FOR_PICKUP,
+            OrderStatus.COLLECTED,
+            OrderStatus.CANCELLED_BY_ADMIN,
+        ];
+        const orders = await this.createUserOrderQuery()
+            .where('ord.user_id = :userId', { userId })
+            .andWhere('ord.status IN (:...statuses)', { statuses: userVisibleStatuses })
+            .orderBy('ord.created_at', 'DESC')
+            .getMany();
 
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.LIST_FETCHED,
@@ -577,20 +689,19 @@ export class OrdersService {
     }
 
     async findOne(id: string, userId: string): Promise<ApiResponseDto<OrderResponseDto>> {
-        const order = await this.ordersRepository.findOne({
-            where: { id, user_id: userId },
-            relations: ['offer', 'business'],
-        });
+        const order = await this.createUserOrderQuery()
+            .where('ord.id = :id', { id })
+            .andWhere('ord.user_id = :userId', { userId })
+            .getOne();
         if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
 
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.FETCHED, OrderResponseDto.fromEntity(order));
     }
 
     private async getOrderWithRelations(id: string): Promise<Order> {
-        const order = await this.ordersRepository.findOne({
-            where: { id },
-            relations: ['offer', 'business'],
-        });
+        const order = await this.createUserOrderQuery()
+            .where('ord.id = :id', { id })
+            .getOne();
         if (!order) throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
 
         return order;
@@ -849,7 +960,7 @@ export class OrdersService {
             actorType: 'SYSTEM',
             note: 'Hold expired and reserved quantity was restored.',
         });
-        await this.syncUserStatistics(manager, saved.user_id);
+        await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
         return saved;
     }
@@ -876,7 +987,7 @@ export class OrdersService {
             actorType: 'SYSTEM',
             note: `Pickup window ended at least ${noShowGraceMinutes} minute(s) ago; order marked no-show.`,
         });
-        await this.syncUserStatistics(manager, saved.user_id);
+        await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
         return saved;
     }
@@ -889,6 +1000,46 @@ export class OrdersService {
     private restoreSoldOfferQuantity(offer: Offer, quantity: number, totalAmountMinor: number): void {
         const maxRestorableRemaining = Math.max(offer.quantity_total - offer.quantity_reserved, 0);
         offer.quantity_remaining = Math.min(offer.quantity_remaining + quantity, maxRestorableRemaining);
+    }
+
+    private getPaymentOutcome(paymentResult: {
+        payment: { status: PaymentStatus; provider_response_code?: string | null; provider_error_code?: string | null };
+        providerStatusCode: number | null;
+    }): 'success' | 'pending' | 'rejected' | 'failed' | 'unknown' {
+        if (paymentResult.payment.status === PaymentStatus.CONFIRMED) {
+            return 'success';
+        }
+        if (paymentResult.payment.status === PaymentStatus.PROCESSING) {
+            return 'pending';
+        }
+        if (paymentResult.payment.status === PaymentStatus.REJECTED) {
+            return 'rejected';
+        }
+        if (paymentResult.providerStatusCode == null &&
+            !paymentResult.payment.provider_response_code &&
+            !paymentResult.payment.provider_error_code) {
+            return 'unknown';
+        }
+        return 'failed';
+    }
+
+    private getPaymentOutcomeMessage(
+        outcome: 'success' | 'pending' | 'rejected' | 'failed' | 'unknown',
+        fallback?: string,
+    ): string {
+        switch (outcome) {
+            case 'success':
+                return DEFAULT_MESSAGES.PAYMENT.APPROVED;
+            case 'pending':
+                return DEFAULT_MESSAGES.PAYMENT.PENDING;
+            case 'rejected':
+                return 'Payment was rejected by the customer.';
+            case 'unknown':
+                return 'We could not confirm the payment status. Please refresh the order.';
+            case 'failed':
+            default:
+                return fallback || 'Payment failed. Please check your account balance or PIN and try again.';
+        }
     }
 
     private applySimpleRefund(order: Order): void {
@@ -929,60 +1080,51 @@ export class OrdersService {
         await manager.save(OrderEvent, event);
     }
 
-    private async syncUserStatistics(manager: EntityManager, userId: string): Promise<void> {
-        const stats = await manager
-            .createQueryBuilder(Order, 'ord')
-            .select('COUNT(ord.id)', 'total_orders')
-            .addSelect(
-                `COALESCE(SUM(CASE WHEN ord.status IN (:...completedStatuses) THEN 1 ELSE 0 END), 0)`,
-                'total_completed_orders',
-            )
-            .addSelect(
-                `COALESCE(SUM(CASE WHEN ord.status IN (:...cancelledStatuses) THEN 1 ELSE 0 END), 0)`,
-                'total_cancelled_orders',
-            )
-            .addSelect('COALESCE(SUM(ord.discount_minor), 0)', 'total_saved_amount_minor')
-            .addSelect(
-                `COALESCE(SUM(CASE
-                    WHEN ord.payment_status = :confirmedPaymentStatus
-                        OR ord.status IN (:...paidStatuses)
-                    THEN ord.total_amount_minor
-                    ELSE 0
-                END), 0)`,
-                'total_spent_amount_minor',
-            )
-            .where('ord.user_id = :userId', { userId })
-            .setParameters({
-                completedStatuses: [OrderStatus.COLLECTED, OrderStatus.CLOSED],
-                cancelledStatuses: [
-                    OrderStatus.CANCELLED,
-                    OrderStatus.CANCELLED_BY_USER,
-                    OrderStatus.CANCELLED_BY_ADMIN,
-                    OrderStatus.EXPIRED,
-                    OrderStatus.NO_SHOW,
-                ],
-                paidStatuses: [
-                    OrderStatus.PAID,
-                    OrderStatus.READY_FOR_PICKUP,
-                    OrderStatus.COLLECTED,
-                    OrderStatus.CLOSED,
-                ],
-                confirmedPaymentStatus: PaymentStatus.CONFIRMED,
-            })
-            .getRawOne<{
-                total_orders: string;
-                total_completed_orders: string;
-                total_cancelled_orders: string;
-                total_saved_amount_minor: string;
-                total_spent_amount_minor: string;
-            }>();
-
-        await manager.update(AppUser, { id: userId }, {
-            total_orders: Number(stats?.total_orders ?? 0),
-            total_completed_orders: Number(stats?.total_completed_orders ?? 0),
-            total_cancelled_orders: Number(stats?.total_cancelled_orders ?? 0),
-            total_saved_amount_minor: Number(stats?.total_saved_amount_minor ?? 0),
-            total_spent_amount_minor: Number(stats?.total_spent_amount_minor ?? 0),
-        });
+    private createUserOrderQuery(): SelectQueryBuilder<Order> {
+        return this.ordersRepository
+            .createQueryBuilder('ord')
+            .leftJoinAndSelect('ord.offer', 'offer')
+            .leftJoinAndSelect('ord.business', 'business')
+            .select([
+                'ord.id',
+                'ord.order_number',
+                'ord.pickup_code',
+                'ord.user_id',
+                'ord.business_id',
+                'ord.offer_id',
+                'ord.quantity',
+                'ord.unit_price_minor',
+                'ord.subtotal_minor',
+                'ord.tax_minor',
+                'ord.discount_minor',
+                'ord.total_amount_minor',
+                'ord.status',
+                'ord.payment_status',
+                'ord.hold_expires_at',
+                'ord.reserved_at',
+                'ord.confirmed_at',
+                'ord.paid_at',
+                'ord.ready_for_pickup_at',
+                'ord.collected_at',
+                'ord.cancelled_at',
+                'ord.expired_at',
+                'ord.pickup_time',
+                'ord.payment_method',
+                'ord.payment_provider',
+                'ord.payment_intent_id',
+                'ord.payment_transaction_id',
+                'ord.cancellation_reason',
+                'ord.has_user_reviewed',
+                'ord.created_at',
+                'offer.id',
+                'offer.title',
+                'offer.main_image_url',
+                'offer.pickup_start',
+                'offer.pickup_end',
+                'business.id',
+                'business.display_name',
+                'business.logo_url',
+            ]);
     }
+
 }

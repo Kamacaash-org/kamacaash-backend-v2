@@ -9,10 +9,12 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { S3Module } from '../../common/s3.module';
 import { AuthModule } from '../auth/auth.module'; // Keep for backwards compatibility or global guards if needed
+import { Order } from '../orders/entities/order.entity';
+import { UserStatisticsService } from './user-statistics.service';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([AppUser, UserDevice]),
+        TypeOrmModule.forFeature([AppUser, UserDevice, Order]),
         S3Module,
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -24,7 +26,7 @@ import { AuthModule } from '../auth/auth.module'; // Keep for backwards compatib
         AuthModule
     ],
     controllers: [AdminUsersController, AppUsersController],
-    providers: [UsersService],
-    exports: [UsersService],
+    providers: [UsersService, UserStatisticsService],
+    exports: [UsersService, UserStatisticsService],
 })
 export class UsersModule { }

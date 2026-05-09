@@ -7,6 +7,9 @@ import ordersConfig from './config/orders.config';
 import businessesConfig from './config/businesses.config';
 import favoritesConfig from './config/favorites.config';
 import firebaseConfig from './config/firebase.config';
+import paymentsConfig from './config/payments.config';
+import loyaltyConfig from './config/loyalty.config';
+import queueConfig from './config/queue.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
@@ -33,7 +36,7 @@ import { AdminModule } from './modules/admin/admin.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig, ordersConfig, businessesConfig, favoritesConfig, firebaseConfig],
+      load: [databaseConfig, ordersConfig, businessesConfig, favoritesConfig, firebaseConfig, paymentsConfig, loyaltyConfig, queueConfig],
     }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
