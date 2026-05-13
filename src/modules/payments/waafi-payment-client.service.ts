@@ -37,7 +37,7 @@ export class WaafiPaymentClientService {
         return {
             schemaVersion: '1.0',
             requestId: params.requestId,
-            timestamp: new Date().toISOString(),
+            timestamp: this.formatWaafiTimestamp(new Date()),
             channelName: waafiConfig.channelName,
             serviceName: waafiConfig.serviceName,
             serviceParams: {
@@ -64,8 +64,7 @@ export class WaafiPaymentClientService {
         const endpoint = waafiConfig.baseUrl?.endsWith(WAAFI_PROVIDER_ENDPOINT)
             ? waafiConfig.baseUrl
             : `${waafiConfig.baseUrl}${WAAFI_PROVIDER_ENDPOINT}`;
-
-        this.logger.log(`Submitting WAAFI push payment request ${payload.requestId}`);
+        this.logger.log(`Submitting WAAFI push payment request ${payload.requestId} to ${endpoint}`);
 
         const response = await fetch(endpoint, {
             method: 'POST',
@@ -92,5 +91,17 @@ export class WaafiPaymentClientService {
             statusCode: response.status,
             body,
         };
+    }
+
+    private formatWaafiTimestamp(date: Date): string {
+        const year = date.getFullYear();
+        const month = `${date.getMonth() + 1}`.padStart(2, '0');
+        const day = `${date.getDate()}`.padStart(2, '0');
+        const hours = `${date.getHours()}`.padStart(2, '0');
+        const minutes = `${date.getMinutes()}`.padStart(2, '0');
+        const seconds = `${date.getSeconds()}`.padStart(2, '0');
+        const milliseconds = `${date.getMilliseconds()}`.padStart(3, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
     }
 }

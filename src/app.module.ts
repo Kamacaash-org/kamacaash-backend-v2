@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScheduleModule } from '@nestjs/schedule';
 import databaseConfig from './config/database.config';
 import ordersConfig from './config/orders.config';
 import businessesConfig from './config/businesses.config';
@@ -38,7 +37,6 @@ import { AdminModule } from './modules/admin/admin.module';
       isGlobal: true,
       load: [databaseConfig, ordersConfig, businessesConfig, favoritesConfig, firebaseConfig, paymentsConfig, loyaltyConfig, queueConfig],
     }),
-    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (configService: ConfigService) => ({

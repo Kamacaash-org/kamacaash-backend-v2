@@ -16,6 +16,6 @@ export default registerAs('payments', () => ({
         apiKey: process.env.WAAFI_API_KEY,
         paymentMethod: process.env.WAAFI_PAYMENT_METHOD ?? 'mwallet_account',
         currency: process.env.WAAFI_CURRENCY ?? 'USD',
-        requestTimeoutMs: Number(process.env.WAAFI_TIMEOUT_MS ?? 30000),
+        requestTimeoutMs: Number(process.env.WAAFI_TIMEOUT_MS ?? 60000),
     },
 }));

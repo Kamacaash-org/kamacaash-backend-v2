@@ -1,7 +1,6 @@
 import { PaymentEventType, PaymentStatus, PayoutMethod } from '../../../common/entities/enums/all.enums';
 
 export const WAAFI_PROVIDER_ENDPOINT = '/asm';
-export const WAAFI_IDEMPOTENCY_WINDOW_MS = 2 * 60 * 1000;
 
 export type NormalizedPaymentOutcome = {
     status: PaymentStatus;

@@ -11,13 +11,11 @@ import { PaymentsModule } from '../payments/payments.module';
 import { UsersModule } from '../users/users.module';
 import { RewardsModule } from '../rewards/rewards.module';
 import { ReviewsModule } from '../reviews/reviews.module';
-import { Payment } from '../payments/entities/payment.entity';
 import { OrderHoldsQueueService } from './order-holds-queue.service';
 
 @Module({
     imports: [
         TypeOrmModule.forFeature([Order, OrderEvent, Offer, Business]),
-        TypeOrmModule.forFeature([Payment]),
         PaymentsModule,
         UsersModule,
         RewardsModule,

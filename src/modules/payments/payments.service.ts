@@ -7,8 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { randomUUID } from 'crypto';
-import { DataSource, MoreThan, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 import {
     PaymentEventType,
@@ -20,7 +19,7 @@ import { DEFAULT_MESSAGES } from '../../common/constants/default-messages';
 import { Order } from '../orders/entities/order.entity';
 import { InitiatePushPaymentDto } from './dto/initiate-push-payment.dto';
 import { PaymentAttemptResponseDto } from './dto/payment-attempt-response.dto';
-import { WAAFI_DEFAULT_PAYMENT_METHOD, WAAFI_IDEMPOTENCY_WINDOW_MS } from './constants/waafi.constants';
+import { WAAFI_DEFAULT_PAYMENT_METHOD } from './constants/waafi.constants';
 import { Payment } from './entities/payment.entity';
 import { PaymentEvent } from './entities/payment-event.entity';
 import { PaymentLog } from './entities/payment-log.entity';
@@ -33,6 +32,7 @@ export type PaymentProcessingResult = {
     normalizedMessage: string;
     canRetry: boolean;
     idempotent: boolean;
+    countsTowardRetryLimit: boolean;
 };
 
 @Injectable()
@@ -88,17 +88,6 @@ export class PaymentsService {
         const waafiConfig = this.configService.get('payments.waafi');
         if (!waafiConfig?.enabled) {
             throw new ServiceUnavailableException('WAAFI payments are not enabled.');
-        }
-
-        const reusablePayment = await this.findReusablePayment(order.id, provider, initiatePaymentDto);
-        if (reusablePayment) {
-            return {
-                payment: reusablePayment,
-                providerStatusCode: null,
-                normalizedMessage: this.getFriendlyStatusMessage(reusablePayment.status),
-                canRetry: this.isRetryableStatus(reusablePayment.status),
-                idempotent: true,
-            };
         }
 
         const payment = await this.createPaymentAttempt(order, userId, initiatePaymentDto);
@@ -185,15 +174,21 @@ export class PaymentsService {
                 normalizedMessage: mapped.message,
                 canRetry: mapped.canRetry,
                 idempotent: false,
+                countsTowardRetryLimit: [PaymentStatus.FAILED, PaymentStatus.REJECTED].includes(mapped.status),
             };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown WAAFI payment error';
+            const timeoutLikeError =
+                error instanceof Error &&
+                (error.name === 'TimeoutError' ||
+                    error.message.toLowerCase().includes('timeout') ||
+                    error.message.toLowerCase().includes('aborted'));
             this.logger.error(
                 `WAAFI push payment failed for order ${order.id}`,
                 error instanceof Error ? error.stack : String(error),
             );
 
-            const failedPayment = await this.dataSource.transaction(async (manager) => {
+            const recoveredPayment = await this.dataSource.transaction(async (manager) => {
                 const lockedPayment = await manager.findOne(Payment, {
                     where: { id: payment.id },
                     lock: { mode: 'pessimistic_write' },
@@ -204,9 +199,17 @@ export class PaymentsService {
                 }
 
                 lockedPayment.status = PaymentStatus.FAILED;
-                lockedPayment.provider_status = lockedPayment.provider_status ?? 'FAILED';
-                lockedPayment.failure_reason = message;
+                lockedPayment.provider_status = lockedPayment.provider_status ?? (timeoutLikeError ? 'TIMEOUT' : 'FAILED');
+                lockedPayment.failure_reason = timeoutLikeError
+                    ? 'WAAFI request timed out before the server returned a final status.'
+                    : message;
                 lockedPayment.failed_at = new Date();
+                lockedPayment.metadata = {
+                    ...lockedPayment.metadata,
+                    transport_timeout: timeoutLikeError,
+                    counts_toward_retry_limit: !timeoutLikeError,
+                    last_transport_error: message,
+                };
 
                 const savedPayment = await manager.save(Payment, lockedPayment);
 
@@ -224,7 +227,9 @@ export class PaymentsService {
                     payment_id: savedPayment.id,
                     type: PaymentEventType.FAILED,
                     status: PaymentStatus.FAILED,
-                    note: 'WAAFI request failed before a successful provider response was parsed.',
+                    note: timeoutLikeError
+                        ? 'WAAFI request timed out before a provider response was received; the user may retry with a fresh payment attempt.'
+                        : 'WAAFI request failed before a successful provider response was parsed.',
                     payload: {
                         message,
                     },
@@ -238,11 +243,14 @@ export class PaymentsService {
             }
 
             return {
-                payment: failedPayment,
+                payment: recoveredPayment,
                 providerStatusCode: null,
-                normalizedMessage: 'Payment could not be completed.',
+                normalizedMessage: timeoutLikeError
+                    ? 'Payment request timed out before WAAFI returned a final response. Please try again.'
+                    : 'Payment could not be completed.',
                 canRetry: true,
                 idempotent: false,
+                countsTowardRetryLimit: !timeoutLikeError,
             };
         }
     }
@@ -256,9 +264,9 @@ export class PaymentsService {
         userId: string,
         initiatePaymentDto: InitiatePushPaymentDto,
     ): Promise<Payment> {
-        const requestId = initiatePaymentDto.request_id?.trim() || this.generateRequestId();
-        const referenceId = initiatePaymentDto.reference_id?.trim() || order.order_number;
-        const invoiceId = initiatePaymentDto.invoice_id?.trim() || order.id;
+        const requestId = this.generateRequestId();
+        const referenceId = this.generateReferenceId(order.order_number);
+        const invoiceId = this.generateInvoiceId(order.id);
         const currency = (initiatePaymentDto.currency?.trim() || this.configService.get<string>('payments.waafi.currency') || 'USD')
             .toUpperCase();
         const description = initiatePaymentDto.description?.trim() || `Payment for order ${order.order_number}`;
@@ -332,38 +340,29 @@ export class PaymentsService {
         }));
     }
 
-    private async findReusablePayment(
-        orderId: string,
-        provider: PaymentProvider,
-        initiatePaymentDto: InitiatePushPaymentDto,
-    ): Promise<Payment | null> {
-        if (initiatePaymentDto.request_id?.trim()) {
-            return this.paymentsRepository.findOne({
-                where: {
-                    provider,
-                    request_id: initiatePaymentDto.request_id.trim(),
-                },
-                order: { created_at: 'DESC' },
-            });
-        }
-
-        return this.paymentsRepository.findOne({
-            where: {
-                order_id: orderId,
-                provider,
-                account_no: initiatePaymentDto.account_no,
-                created_at: MoreThan(new Date(Date.now() - WAAFI_IDEMPOTENCY_WINDOW_MS)),
-            },
-            order: { created_at: 'DESC' },
-        });
-    }
-
     private generatePaymentNumber(): string {
         return `PAY-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     }
 
     private generateRequestId(): string {
-        return `WAAFI-${randomUUID()}`;
+        return this.generateNumericIdentifier(14);
+    }
+
+    private generateReferenceId(orderNumber: string): string {
+        return this.generateNumericIdentifier(10);
+    }
+
+    private generateInvoiceId(orderId: string): string {
+        return this.generateNumericIdentifier(10);
+    }
+
+    private generateNumericIdentifier(length: number): string {
+        let value = `${Date.now()}${Math.floor(Math.random() * 1000000)}`;
+        if (value.length < length) {
+            value = value.padEnd(length, '0');
+        }
+
+        return value.slice(0, length);
     }
 
     private maskAccountNumber(accountNo: string): string {
@@ -374,22 +373,4 @@ export class PaymentsService {
         return `${'*'.repeat(accountNo.length - 4)}${accountNo.slice(-4)}`;
     }
 
-    private isRetryableStatus(status: PaymentStatus): boolean {
-        return [PaymentStatus.FAILED, PaymentStatus.REJECTED].includes(status);
-    }
-
-    private getFriendlyStatusMessage(status: PaymentStatus): string {
-        switch (status) {
-            case PaymentStatus.CONFIRMED:
-                return 'Payment approved successfully.';
-            case PaymentStatus.PROCESSING:
-                return 'Payment request sent and is pending confirmation.';
-            case PaymentStatus.REJECTED:
-                return 'Payment was rejected by the user.';
-            case PaymentStatus.FAILED:
-                return 'Payment could not be completed.';
-            default:
-                return 'Payment request has already been processed.';
-        }
-    }
 }

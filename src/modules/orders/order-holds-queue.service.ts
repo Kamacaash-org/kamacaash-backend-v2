@@ -9,7 +9,13 @@ import { UserStatisticsService } from '../users/user-statistics.service';
 import { Order } from './entities/order.entity';
 import { OrderEvent } from './entities/order-event.entity';
 import { Offer } from '../offers/entities/offer.entity';
-import { ORDER_HOLD_JOB_ID_PREFIX, ORDER_HOLD_JOB_NAME, ORDER_HOLD_QUEUE } from './order-holds.constants';
+import {
+    ORDER_HOLD_JOB_ID_PREFIX,
+    ORDER_HOLD_JOB_NAME,
+    ORDER_HOLD_LOCK_KEY_PREFIX,
+    ORDER_HOLD_QUEUE,
+    ORDER_HOLD_RETRY_KEY_PREFIX,
+} from './order-holds.constants';
 
 type OrderHoldJobData = {
     orderId: string;
@@ -18,6 +24,8 @@ type OrderHoldJobData = {
 @Injectable()
 export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(OrderHoldsQueueService.name);
+    private static readonly MAX_FAILED_ATTEMPTS = 3;
+    private static readonly PAYMENT_ATTEMPT_LOCK_TTL_MS = 45_000;
     private connection: IORedis | null = null;
     private queue: Queue<OrderHoldJobData> | null = null;
     private worker: Worker<OrderHoldJobData> | null = null;
@@ -41,13 +49,27 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
 
         const redisConfig = this.configService.get('queues.redis');
         const queueName = this.configService.get<string>('queues.orderHolds.queueName') ?? ORDER_HOLD_QUEUE;
-
-        this.connection = new IORedis({
-            host: redisConfig.host,
-            port: redisConfig.port,
+        const redisOptions = {
+            username: redisConfig.username,
             password: redisConfig.password,
             db: redisConfig.db,
-            maxRetriesPerRequest: null,
+            maxRetriesPerRequest: null as null,
+            connectTimeout: redisConfig.connectTimeoutMs,
+            retryStrategy: (times: number) =>
+                times > redisConfig.maxReconnectAttempts ? null : Math.min(times * 1000, 5000),
+        };
+
+        this.connection = redisConfig.url
+            ? new IORedis(redisConfig.url, {
+                ...redisOptions,
+            })
+            : new IORedis({
+                host: redisConfig.host,
+                port: redisConfig.port,
+                ...redisOptions,
+            });
+        this.connection.on('error', (error) => {
+            this.logger.error(`Order hold Redis connection error: ${error.message}`);
         });
         this.queue = new Queue<OrderHoldJobData>(queueName, {
             connection: this.connection,
@@ -109,6 +131,7 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
         };
 
         await this.queue.add(ORDER_HOLD_JOB_NAME, { orderId }, options);
+        await this.resetRetryState(orderId, holdExpiresAt);
         this.logger.log(`Scheduled hold expiry job for order ${orderId}.`);
     }
 
@@ -127,11 +150,109 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
         this.logger.log(`Removed hold expiry job for order ${orderId}.`);
     }
 
+    async resetRetryState(orderId: string, holdExpiresAt: Date | null | undefined): Promise<void> {
+        const ttlMs = this.getStateTtlMs(holdExpiresAt);
+        if (!this.connection || ttlMs <= 0) {
+            return;
+        }
+
+        const retryKey = this.getRetryKey(orderId);
+        const alreadyExists = await this.connection.exists(retryKey);
+        if (alreadyExists) {
+            await this.connection.pexpire(retryKey, ttlMs);
+            return;
+        }
+
+        await this.connection.set(retryKey, '0', 'PX', ttlMs);
+    }
+
+    async clearReservationState(orderId: string): Promise<void> {
+        if (!this.connection) {
+            return;
+        }
+
+        await this.connection.del(this.getRetryKey(orderId), this.getLockKey(orderId));
+    }
+
+    async getFailedPaymentAttempts(orderId: string): Promise<number> {
+        if (!this.connection) {
+            return 0;
+        }
+
+        const rawValue = await this.connection.get(this.getRetryKey(orderId));
+        const parsed = Number(rawValue ?? 0);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    }
+
+    async registerFailedPaymentAttempt(orderId: string, holdExpiresAt: Date | null | undefined): Promise<number> {
+        if (!this.connection) {
+            return 0;
+        }
+
+        const ttlMs = this.getStateTtlMs(holdExpiresAt);
+        const key = this.getRetryKey(orderId);
+
+        const pipeline = this.connection.multi().incr(key);
+        if (ttlMs > 0) {
+            pipeline.pexpire(key, ttlMs);
+        }
+
+        const results = await pipeline.exec();
+        const incrementResult = results?.[0]?.[1];
+        const attempts = typeof incrementResult === 'number'
+            ? incrementResult
+            : Number(incrementResult ?? 0);
+
+        return Number.isFinite(attempts) && attempts > 0 ? attempts : 0;
+    }
+
+    async hasReachedFailedAttemptLimit(orderId: string): Promise<boolean> {
+        return (await this.getFailedPaymentAttempts(orderId)) >= OrderHoldsQueueService.MAX_FAILED_ATTEMPTS;
+    }
+
+    async acquirePaymentAttemptLock(orderId: string): Promise<string | null> {
+        if (!this.connection) {
+            return null;
+        }
+
+        const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const result = await this.connection.set(
+            this.getLockKey(orderId),
+            token,
+            'PX',
+            OrderHoldsQueueService.PAYMENT_ATTEMPT_LOCK_TTL_MS,
+            'NX',
+        );
+
+        return result === 'OK' ? token : null;
+    }
+
+    async releasePaymentAttemptLock(orderId: string, token: string | null | undefined): Promise<void> {
+        if (!this.connection || !token) {
+            return;
+        }
+
+        await this.connection.eval(
+            `
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                end
+                return 0
+            `,
+            1,
+            this.getLockKey(orderId),
+            token,
+        );
+    }
+
     private isEnabled(): boolean {
         return Boolean(this.configService.get<boolean>('queues.orderHolds.enabled'));
     }
 
     private async handleHoldExpiry(data: OrderHoldJobData): Promise<void> {
+        let holdStillActiveUntil: Date | null = null;
+        let shouldClearState = false;
+
         await this.ordersRepository.manager.transaction(async (manager) => {
             const order = await manager.findOne(Order, {
                 where: { id: data.orderId },
@@ -140,6 +261,7 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
 
             if (!order) {
                 this.logger.warn(`Order hold expiry skipped; order ${data.orderId} no longer exists.`);
+                shouldClearState = true;
                 return;
             }
 
@@ -148,10 +270,12 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
                 order.payment_status === PaymentStatus.CONFIRMED
             ) {
                 this.logger.log(`Order hold expiry skipped for order ${order.id}; order is no longer payable.`);
+                shouldClearState = true;
                 return;
             }
 
             if (!order.hold_expires_at || order.hold_expires_at.getTime() > Date.now()) {
+                holdStillActiveUntil = order.hold_expires_at ?? null;
                 this.logger.log(`Order hold expiry skipped for order ${order.id}; hold is still active.`);
                 return;
             }
@@ -189,6 +313,32 @@ export class OrderHoldsQueueService implements OnModuleInit, OnModuleDestroy {
             await this.userStatisticsService.rebuildForUser(manager, savedOrder.user_id);
 
             this.logger.log(`Expired unpaid reservation for order ${savedOrder.id}.`);
+            shouldClearState = true;
         });
+
+        if (holdStillActiveUntil) {
+            await this.scheduleHoldExpiry(data.orderId, holdStillActiveUntil);
+            return;
+        }
+
+        if (shouldClearState) {
+            await this.clearReservationState(data.orderId);
+        }
+    }
+
+    private getRetryKey(orderId: string): string {
+        return `${ORDER_HOLD_RETRY_KEY_PREFIX}${orderId}`;
+    }
+
+    private getLockKey(orderId: string): string {
+        return `${ORDER_HOLD_LOCK_KEY_PREFIX}${orderId}`;
+    }
+
+    private getStateTtlMs(holdExpiresAt: Date | null | undefined): number {
+        if (!holdExpiresAt) {
+            return 0;
+        }
+
+        return Math.max(holdExpiresAt.getTime() - Date.now(), 0);
     }
 }

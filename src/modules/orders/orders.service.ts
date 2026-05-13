@@ -3,18 +3,14 @@ import {
     BadRequestException,
     NotFoundException,
     ConflictException,
-    Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
     Repository,
     DataSource,
     EntityManager,
-    LessThanOrEqual,
-    In,
     SelectQueryBuilder,
 } from 'typeorm';
-import { Interval } from '@nestjs/schedule';
 import { Order } from './entities/order.entity';
 import { OrderEvent } from './entities/order-event.entity';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -43,7 +39,6 @@ import {
 } from '../../config/orders.config';
 import { AdminCloseNoShowOrderDto } from './dto/admin-close-no-show-order.dto';
 import { PaymentsService } from '../payments/payments.service';
-import { Payment } from '../payments/entities/payment.entity';
 import { UserStatisticsService } from '../users/user-statistics.service';
 import { RewardsService } from '../rewards/rewards.service';
 import { ReviewRemindersService } from '../reviews/review-reminders.service';
@@ -51,9 +46,6 @@ import { OrderHoldsQueueService } from './order-holds-queue.service';
 
 @Injectable()
 export class OrdersService {
-    private readonly logger = new Logger(OrdersService.name);
-    private isRestoringExpiredOrders = false;
-
     constructor(
         @InjectRepository(Order)
         private ordersRepository: Repository<Order>,
@@ -61,8 +53,6 @@ export class OrdersService {
         private orderEventsRepository: Repository<OrderEvent>,
         @InjectRepository(Business)
         private businessesRepository: Repository<Business>,
-        @InjectRepository(Payment)
-        private paymentsRepository: Repository<Payment>,
         private dataSource: DataSource,
         private configService: ConfigService,
         private paymentsService: PaymentsService,
@@ -139,6 +129,7 @@ export class OrdersService {
         userId: string,
         markOrderPaidDto: MarkOrderPaidDto,
     ): Promise<ApiResponseDto<OrderResponseDto>> {
+        let paymentAttemptLockToken: string | null = null;
         const preparation = await this.dataSource.transaction(async (manager: EntityManager) => {
             const order = await this.getOwnedOrderForUpdate(manager, id, userId);
 
@@ -147,6 +138,7 @@ export class OrdersService {
                     orderId: order.id,
                     wasExpired: false,
                     alreadyPaid: true,
+                    releasedAfterFailureLimit: false,
                 };
             }
 
@@ -156,7 +148,26 @@ export class OrdersService {
 
             if (this.isHoldExpired(order)) {
                 const expired = await this.restoreExpiredHold(manager, order);
-                return { orderId: expired.id, wasExpired: true, alreadyPaid: false };
+                return {
+                    orderId: expired.id,
+                    wasExpired: true,
+                    alreadyPaid: false,
+                    releasedAfterFailureLimit: false,
+                };
+            }
+
+            if (await this.orderHoldsQueueService.hasReachedFailedAttemptLimit(order.id)) {
+                const cancelled = await this.cancelReservationForFailedAttempts(manager, order);
+                return {
+                    orderId: cancelled.id,
+                    wasExpired: false,
+                    alreadyPaid: false,
+                    releasedAfterFailureLimit: true,
+                };
+            }
+
+            if ([PaymentStatus.INITIATED, PaymentStatus.PROCESSING].includes(order.payment_status)) {
+                throw new ConflictException('A payment attempt is already in progress for this reservation.');
             }
 
             const previousStatus = order.status;
@@ -178,11 +189,33 @@ export class OrdersService {
                 note: 'Payment push request initiated.',
             });
 
-            return { orderId: saved.id, wasExpired: false, alreadyPaid: false };
+            return {
+                orderId: saved.id,
+                wasExpired: false,
+                alreadyPaid: false,
+                releasedAfterFailureLimit: false,
+            };
         });
 
         if (preparation.wasExpired) {
+            await this.orderHoldsQueueService.cancelHoldExpiry(preparation.orderId);
+            await this.orderHoldsQueueService.clearReservationState(preparation.orderId);
             throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
+        }
+
+        if (preparation.releasedAfterFailureLimit) {
+            await this.orderHoldsQueueService.cancelHoldExpiry(preparation.orderId);
+            await this.orderHoldsQueueService.clearReservationState(preparation.orderId);
+            const cancelledOrder = await this.getOrderWithRelations(preparation.orderId);
+
+            return ApiResponseDto.success(
+                'Payment failed. Your reservation was released after three unsuccessful attempts.',
+                OrderResponseDto.fromEntity(cancelledOrder),
+                {
+                    paymentOutcome: 'failed',
+                    paymentLocked: true,
+                },
+            );
         }
 
         if (preparation.alreadyPaid) {
@@ -197,93 +230,101 @@ export class OrdersService {
             throw new NotFoundException(`${DEFAULT_MESSAGES.ORDER.NOT_FOUND}: ${id}`);
         }
 
-        const paymentResult = await this.paymentsService.submitWaafiPushPayment(orderForPayment, userId, markOrderPaidDto);
+        paymentAttemptLockToken = await this.orderHoldsQueueService.acquirePaymentAttemptLock(preparation.orderId);
+        if (!paymentAttemptLockToken) {
+            throw new ConflictException('A payment attempt is already in progress for this reservation.');
+        }
 
-        const finalizedResult = await this.dataSource.transaction(async (manager: EntityManager) => {
-            const order = await this.getOwnedOrderForUpdate(manager, id, userId);
-            const previousStatus = order.status;
-            const previousPaymentStatus = order.payment_status;
-            const now = new Date();
-            let releasedAfterFailureLimit = false;
+        let paymentResult;
+        let finalizedResult;
 
-            order.payment_provider = paymentResult.payment.provider;
-            order.payment_method = paymentResult.payment.payment_method ?? undefined;
-            order.payment_intent_id = paymentResult.payment.request_id ?? undefined;
-            order.payment_transaction_id =
-                paymentResult.payment.provider_transaction_id ??
-                paymentResult.payment.issuer_transaction_id ??
-                paymentResult.payment.reference_id ??
-                undefined;
+        try {
+            paymentResult = await this.paymentsService.submitWaafiPushPayment(orderForPayment, userId, markOrderPaidDto);
 
-            if (paymentResult.payment.status === PaymentStatus.CONFIRMED) {
-                order.status = OrderStatus.PAID;
-                order.payment_status = PaymentStatus.CONFIRMED;
-                order.confirmed_at = order.confirmed_at ?? now;
-                order.paid_at = now;
-                (order as any).hold_expires_at = null;
+            finalizedResult = await this.dataSource.transaction(async (manager: EntityManager) => {
+                const order = await this.getOwnedOrderForUpdate(manager, id, userId);
+                const previousStatus = order.status;
+                const previousPaymentStatus = order.payment_status;
+                const now = new Date();
+                let releasedAfterFailureLimit = false;
+                let terminalReservationState = false;
 
-                const offer = await this.getOfferForUpdate(manager, order.offer_id);
-                offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
-                await manager.save(offer);
-            } else if (paymentResult.payment.status === PaymentStatus.PROCESSING) {
-                order.status = OrderStatus.PENDING_PAYMENT;
-                order.payment_status = PaymentStatus.PROCESSING;
-            } else if (paymentResult.payment.status === PaymentStatus.REJECTED) {
-                order.status = OrderStatus.PENDING_PAYMENT;
-                order.payment_status = PaymentStatus.REJECTED;
-            } else {
-                order.status = OrderStatus.PENDING_PAYMENT;
-                order.payment_status = PaymentStatus.FAILED;
-            }
+                order.payment_provider = paymentResult.payment.provider;
+                order.payment_method = paymentResult.payment.payment_method ?? undefined;
+                order.payment_intent_id = paymentResult.payment.request_id ?? undefined;
+                order.payment_transaction_id =
+                    paymentResult.payment.provider_transaction_id ??
+                    paymentResult.payment.issuer_transaction_id ??
+                    paymentResult.payment.reference_id ??
+                    undefined;
 
-            if ([PaymentStatus.FAILED, PaymentStatus.REJECTED].includes(order.payment_status)) {
-                const failedAttempts = await manager.count(Payment, {
-                    where: {
-                        order_id: order.id,
-                        status: In([PaymentStatus.FAILED, PaymentStatus.REJECTED]),
-                    },
+                if (![OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT, OrderStatus.PAID].includes(order.status)) {
+                    terminalReservationState = true;
+                } else if (paymentResult.payment.status === PaymentStatus.CONFIRMED) {
+                    order.status = OrderStatus.PAID;
+                    order.payment_status = PaymentStatus.CONFIRMED;
+                    order.confirmed_at = order.confirmed_at ?? now;
+                    order.paid_at = now;
+                    (order as any).hold_expires_at = null;
+
+                    const offer = await this.getOfferForUpdate(manager, order.offer_id);
+                    offer.quantity_reserved = Math.max(offer.quantity_reserved - order.quantity, 0);
+                    await manager.save(offer);
+                } else if (paymentResult.payment.status === PaymentStatus.PROCESSING) {
+                    order.status = OrderStatus.PENDING_PAYMENT;
+                    order.payment_status = PaymentStatus.PROCESSING;
+                } else {
+                    order.status = OrderStatus.PENDING_PAYMENT;
+                    order.payment_status =
+                        paymentResult.payment.status === PaymentStatus.REJECTED
+                            ? PaymentStatus.REJECTED
+                            : PaymentStatus.FAILED;
+
+                    const failedAttempts = paymentResult.countsTowardRetryLimit
+                        ? await this.orderHoldsQueueService.registerFailedPaymentAttempt(
+                            order.id,
+                            order.hold_expires_at,
+                        )
+                        : 0;
+
+                    if (paymentResult.countsTowardRetryLimit && failedAttempts >= 3) {
+                        await this.cancelReservationForFailedAttempts(manager, order, now);
+                        releasedAfterFailureLimit = true;
+                    }
+                }
+
+                const saved = await manager.save(Order, order);
+                await this.recordOrderEvent(manager, {
+                    orderId: saved.id,
+                    fromStatus: previousStatus,
+                    toStatus: saved.status,
+                    fromPaymentStatus: previousPaymentStatus,
+                    toPaymentStatus: saved.payment_status,
+                    actorType: 'USER',
+                    actorId: userId,
+                    note: terminalReservationState
+                        ? 'Payment finished after the reservation was already closed.'
+                        : paymentResult.normalizedMessage,
                 });
 
-                if (failedAttempts >= 3) {
-                    const offer = await this.getOfferForUpdate(manager, order.offer_id);
-                    this.restoreOfferQuantity(offer, order.quantity);
-                    order.status = OrderStatus.CANCELLED_BY_USER;
-                    order.cancelled_at = now;
-                    order.cancellation_reason = 'Reservation released after three unsuccessful payment attempts.';
-                    (order as any).hold_expires_at = null;
-                    await manager.save(offer);
-                    releasedAfterFailureLimit = true;
+                if (saved.payment_status === PaymentStatus.CONFIRMED && !terminalReservationState) {
+                    await this.rewardsService.awardApprovedPayment(manager, paymentResult.payment);
                 }
-            }
 
-            const saved = await manager.save(Order, order);
-            await this.recordOrderEvent(manager, {
-                orderId: saved.id,
-                fromStatus: previousStatus,
-                toStatus: saved.status,
-                fromPaymentStatus: previousPaymentStatus,
-                toPaymentStatus: saved.payment_status,
-                actorType: 'USER',
-                actorId: userId,
-                note: paymentResult.normalizedMessage,
+                await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
+                return {
+                    orderId: saved.id,
+                    releasedAfterFailureLimit,
+                    terminalReservationState,
+                };
             });
+        } finally {
+            await this.orderHoldsQueueService.releasePaymentAttemptLock(preparation.orderId, paymentAttemptLockToken);
+        }
 
-            if (saved.payment_status === PaymentStatus.CONFIRMED) {
-                await this.rewardsService.awardApprovedPayment(manager, paymentResult.payment);
-            }
-
-            await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
-            return {
-                orderId: saved.id,
-                releasedAfterFailureLimit,
-            };
-        });
-
-        if (
-            paymentResult.payment.status === PaymentStatus.CONFIRMED ||
-            finalizedResult.releasedAfterFailureLimit
-        ) {
+        if (paymentResult.payment.status === PaymentStatus.CONFIRMED || finalizedResult.releasedAfterFailureLimit) {
             await this.orderHoldsQueueService.cancelHoldExpiry(finalizedResult.orderId);
+            await this.orderHoldsQueueService.clearReservationState(finalizedResult.orderId);
         }
 
         const withRelations = await this.getOrderWithRelations(finalizedResult.orderId);
@@ -300,7 +341,9 @@ export class OrdersService {
         };
 
         const paymentOutcome = this.getPaymentOutcome(paymentResult);
-        const responseMessage = finalizedResult.releasedAfterFailureLimit
+        const responseMessage = finalizedResult.terminalReservationState
+            ? 'Payment attempt finished after the reservation had already closed.'
+            : finalizedResult.releasedAfterFailureLimit
             ? 'Payment failed. Your reservation was released after three unsuccessful attempts.'
             : this.getPaymentOutcomeMessage(paymentOutcome, paymentResult.normalizedMessage);
 
@@ -356,10 +399,13 @@ export class OrdersService {
         });
 
         if (result.wasExpired) {
+            await this.orderHoldsQueueService.cancelHoldExpiry(result.order.id);
+            await this.orderHoldsQueueService.clearReservationState(result.order.id);
             throw new ConflictException(DEFAULT_MESSAGES.ORDER.HOLD_EXPIRED);
         }
 
         await this.orderHoldsQueueService.cancelHoldExpiry(result.order.id);
+        await this.orderHoldsQueueService.clearReservationState(result.order.id);
         const withRelations = await this.getOrderWithRelations(result.order.id);
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.CANCELLED, OrderResponseDto.fromEntity(withRelations));
     }
@@ -501,6 +547,7 @@ export class OrdersService {
         });
 
         await this.orderHoldsQueueService.cancelHoldExpiry(result.id);
+        await this.orderHoldsQueueService.clearReservationState(result.id);
         return ApiResponseDto.success(
             DEFAULT_MESSAGES.ORDER.ADMIN_CANCELLED,
             null
@@ -560,6 +607,7 @@ export class OrdersService {
             return saved.id;
         });
         await this.orderHoldsQueueService.cancelHoldExpiry(completedOrderId);
+        await this.orderHoldsQueueService.clearReservationState(completedOrderId);
         await this.reviewRemindersService.scheduleForCollectedOrder(completedOrderId);
         return ApiResponseDto.success(DEFAULT_MESSAGES.ORDER.COMPLETED, null);
     }
@@ -614,52 +662,6 @@ export class OrdersService {
             DEFAULT_MESSAGES.ORDER.NO_SHOW_CLOSED,
             null,
         );
-    }
-
-    @Interval(10_000)
-    async restoreExpiredUnpaidOrders(): Promise<void> {
-        if (this.isRestoringExpiredOrders) {
-            return;
-        }
-
-        this.isRestoringExpiredOrders = true;
-        try {
-            const restoredCount = await this.dataSource.transaction(async (manager: EntityManager) => {
-                const expiredOrders = await manager.find(Order, {
-                    where: {
-                        status: In([OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT]),
-                        payment_status: In([
-                            PaymentStatus.PENDING,
-                            PaymentStatus.INITIATED,
-                            PaymentStatus.PROCESSING,
-                            PaymentStatus.FAILED,
-                            PaymentStatus.REJECTED,
-                        ]),
-                        hold_expires_at: LessThanOrEqual(new Date()),
-                    },
-                    order: { hold_expires_at: 'ASC' },
-                    take: 100,
-                    lock: { mode: 'pessimistic_write' },
-                });
-
-                for (const order of expiredOrders) {
-                    await this.restoreExpiredHold(manager, order);
-                }
-
-                return expiredOrders.length;
-            });
-
-            if (restoredCount > 0) {
-                this.logger.log(`Restored ${restoredCount} expired unpaid order(s).`);
-            }
-        } catch (error) {
-            this.logger.error(
-                'Failed to restore expired unpaid orders',
-                error instanceof Error ? error.stack : String(error),
-            );
-        } finally {
-            this.isRestoringExpiredOrders = false;
-        }
     }
 
     generateOrderNumber(): string {
@@ -963,6 +965,24 @@ export class OrdersService {
         await this.userStatisticsService.rebuildForUser(manager, saved.user_id);
 
         return saved;
+    }
+
+    private async cancelReservationForFailedAttempts(
+        manager: EntityManager,
+        order: Order,
+        now = new Date(),
+    ): Promise<Order> {
+        const offer = await this.getOfferForUpdate(manager, order.offer_id);
+        this.restoreOfferQuantity(offer, order.quantity);
+
+        order.status = OrderStatus.CANCELLED_BY_USER;
+        order.payment_status = PaymentStatus.FAILED;
+        order.cancelled_at = now;
+        order.cancellation_reason = 'Reservation released after three unsuccessful payment attempts.';
+        (order as any).hold_expires_at = null;
+
+        await manager.save(offer);
+        return order;
     }
 
     private async markOrderNoShow(

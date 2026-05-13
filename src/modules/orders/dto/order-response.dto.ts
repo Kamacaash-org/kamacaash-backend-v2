@@ -118,6 +118,10 @@ const normalizePaymentStatus = (status: PaymentStatus): PaymentStatus => {
 const isPaymentRetryable = (status: PaymentStatus): boolean =>
     [PaymentStatus.FAILED, PaymentStatus.REJECTED].includes(status);
 
+const canRetryOrderPayment = (order: Order): boolean =>
+    [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status) &&
+    isPaymentRetryable(order.payment_status);
+
 const buildTimeline = (order: Order): OrderTimelineEntryDto[] => {
     const items: Array<{ key: TimelineKey; label: string; date?: Date | null }> = [
         { key: 'reserved', label: 'Reserved', date: order.reserved_at ?? order.created_at },
@@ -306,7 +310,7 @@ export class OrderResponseDto {
                 requestId: order.payment_intent_id,
                 referenceId: order.order_number,
                 transactionId: order.payment_transaction_id,
-                canRetry: isPaymentRetryable(order.payment_status),
+                canRetry: canRetryOrderPayment(order) && order.payment_status !== PaymentStatus.PROCESSING,
                 isPaid: order.payment_status === PaymentStatus.CONFIRMED,
             },
             review: {
@@ -315,7 +319,10 @@ export class OrderResponseDto {
                 status: order.has_user_reviewed ? ReviewStatus.PENDING : undefined,
             },
             timeline: buildTimeline(order),
-            canMarkPaid: [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status),
+            canMarkPaid:
+                [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status) &&
+                order.payment_status !== PaymentStatus.PROCESSING &&
+                order.payment_status !== PaymentStatus.INITIATED,
             canCancelReservation: [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status),
         };
     }
@@ -435,11 +442,14 @@ export class MobileUserOrderDto {
                 requestId: order.payment_intent_id,
                 referenceId: order.order_number,
                 transactionId: order.payment_transaction_id,
-                canRetry: isPaymentRetryable(order.payment_status),
+                canRetry: canRetryOrderPayment(order) && order.payment_status !== PaymentStatus.PROCESSING,
                 isPaid: order.payment_status === PaymentStatus.CONFIRMED,
             },
             actions: {
-                canPay: [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status),
+                canPay:
+                    [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status) &&
+                    order.payment_status !== PaymentStatus.PROCESSING &&
+                    order.payment_status !== PaymentStatus.INITIATED,
                 canReview: normalizedStatus === OrderStatus.COLLECTED && !order.has_user_reviewed,
                 canCancelReservation: [OrderStatus.HOLD, OrderStatus.PENDING_PAYMENT].includes(order.status),
             },

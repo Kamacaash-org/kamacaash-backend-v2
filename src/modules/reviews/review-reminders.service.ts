@@ -46,12 +46,26 @@ export class ReviewRemindersService implements OnModuleInit, OnModuleDestroy {
 
         const redisConfig = this.configService.get('queues.redis');
         const queueName = this.configService.get<string>('queues.reviewReminders.queueName') ?? REVIEW_REMINDER_QUEUE;
-        this.connection = new IORedis({
-            host: redisConfig.host,
-            port: redisConfig.port,
+        const redisOptions = {
+            username: redisConfig.username,
             password: redisConfig.password,
             db: redisConfig.db,
-            maxRetriesPerRequest: null,
+            maxRetriesPerRequest: null as null,
+            connectTimeout: redisConfig.connectTimeoutMs,
+            retryStrategy: (times: number) =>
+                times > redisConfig.maxReconnectAttempts ? null : Math.min(times * 1000, 5000),
+        };
+        this.connection = redisConfig.url
+            ? new IORedis(redisConfig.url, {
+                ...redisOptions,
+            })
+            : new IORedis({
+                host: redisConfig.host,
+                port: redisConfig.port,
+                ...redisOptions,
+            });
+        this.connection.on('error', (error) => {
+            this.logger.error(`Review reminder Redis connection error: ${error.message}`);
         });
         this.queue = new Queue<ReviewReminderJobData>(queueName, {
             connection: this.connection,
