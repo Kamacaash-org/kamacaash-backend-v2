@@ -168,21 +168,26 @@ export class NotificationsService {
     }
 
     private getServiceAccount(): ServiceAccount | null {
-        const serviceAccountJson = this.configService.get<string>('firebase.serviceAccountJson');
+        const projectId = this.configService.get<string>('firebase.projectId');
+        const clientEmail = this.configService.get<string>('firebase.clientEmail');
+        const privateKey = this.configService.get<string>('firebase.privateKey')?.replace(/\\n/g, '\n');
+        const serviceAccountJson = this.configService.get<string>('firebase.serviceAccountJson')?.trim();
 
         if (serviceAccountJson) {
             try {
                 return JSON.parse(serviceAccountJson) as ServiceAccount;
             } catch {
-                throw new ServiceUnavailableException(
-                    'FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON.',
+                if (!projectId || !clientEmail || !privateKey) {
+                    throw new ServiceUnavailableException(
+                        'FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON.',
+                    );
+                }
+
+                this.logger.warn(
+                    'FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON. Falling back to FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.',
                 );
             }
         }
-
-        const projectId = this.configService.get<string>('firebase.projectId');
-        const clientEmail = this.configService.get<string>('firebase.clientEmail');
-        const privateKey = this.configService.get<string>('firebase.privateKey')?.replace(/\\n/g, '\n');
 
         if (!projectId || !clientEmail || !privateKey) {
             return null;

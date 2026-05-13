@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiResponseDto } from '../../common/dto/api-response.dto';
 
 @ApiTags('notifications')
-@Controller('notifications')
+@Controller(['notifications', 'app/notifications'])
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class NotificationsController {
