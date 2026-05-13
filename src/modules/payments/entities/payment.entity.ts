@@ -1,4 +1,11 @@
-import { Entity, Column, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import {
+    Entity,
+    Column,
+    Index,
+    JoinColumn,
+    ManyToOne,
+    OneToMany,
+} from 'typeorm';
 import { BaseEntity } from '../../../common/entities/base.entity';
 import { Order } from '../../orders/entities/order.entity';
 import { AppUser } from '../../users/entities/app-user.entity';
@@ -14,7 +21,7 @@ import { PaymentEvent } from './payment-event.entity';
 @Entity('payments')
 @Index(['provider', 'request_id'], { unique: true })
 @Index(['provider', 'reference_id'])
-@Index(['order_id', 'provider'])
+@Index(['order_id', 'provider'], { unique: true })
 export class Payment extends BaseEntity {
     @Column({ type: 'varchar', length: 50, unique: true })
     payment_number!: string;
@@ -67,7 +74,11 @@ export class Payment extends BaseEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     provider_reference!: string | null;
 
-    @Column({ type: 'enum', enum: PaymentStatus, default: PaymentStatus.INITIATED })
+    @Column({
+        type: 'enum',
+        enum: PaymentStatus,
+        default: PaymentStatus.INITIATED,
+    })
     status!: PaymentStatus;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
@@ -111,7 +122,7 @@ export class Payment extends BaseEntity {
     business_payout_minor!: number;
 
     @Column({ type: 'jsonb', nullable: true })
-    payment_method_details!: Record<string, any>;
+    payment_method_details!: Record<string, any> | null;
 
     @Column({ type: 'varchar', length: 4, nullable: true })
     card_last_four!: string | null;
@@ -138,16 +149,16 @@ export class Payment extends BaseEntity {
     refund_reason!: string | null;
 
     @Column({ type: 'jsonb', nullable: true })
-    provider_request!: Record<string, any>;
+    provider_request!: Record<string, any> | null;
 
     @Column({ type: 'jsonb', nullable: true })
-    provider_response!: Record<string, any>;
+    provider_response!: Record<string, any> | null;
 
     @Column({ type: 'jsonb', nullable: true })
-    provider_webhook_data!: Record<string, any>;
+    provider_webhook_data!: Record<string, any> | null;
 
     @Column({ type: 'jsonb', nullable: true })
-    raw_response!: Record<string, any>;
+    raw_response!: Record<string, any> | null;
 
     @OneToMany(() => PaymentLog, (paymentLog) => paymentLog.payment)
     logs!: PaymentLog[];
